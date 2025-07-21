@@ -115,11 +115,37 @@ export const useAuthStore = create<AuthState>()(
         
         if (session?.user) {
           // Get user profile data
-          const { data: profile } = await supabase
+          let { data: profile } = await supabase
             .from('users')
             .select('*, billing(plan_type, credits_remaining)')
             .eq('id', session.user.id)
             .single();
+
+          // If profile doesn't exist (OAuth user), create it
+          if (!profile) {
+            const { data: newProfile } = await supabase
+              .from('users')
+              .insert({
+                id: session.user.id,
+                email: session.user.email!,
+                full_name: session.user.user_metadata?.full_name || session.user.email?.split('@')[0] || 'User',
+                role: 'user',
+                email_verified: true,
+              })
+              .select()
+              .single();
+
+            // Create billing record
+            if (newProfile) {
+              await supabase.from('billing').insert({
+                user_id: session.user.id,
+                plan_type: 'free',
+                credits_remaining: 5,
+                credits_used: 0,
+              });
+              profile = newProfile;
+            }
+          }
 
           set({
             user: {

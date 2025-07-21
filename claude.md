@@ -189,52 +189,137 @@ Build a fully functional replica of Lovable.dev - an AI-powered app builder that
 
 ### ✅ Completed Features
 
-#### Backend (90% Complete)
-- ✅ **Authentication System**: JWT-based auth with refresh tokens, role-based access
+#### Backend (95% Complete)
+- ✅ **Authentication System**: Supabase Auth with GitHub OAuth and email/password
 - ✅ **Project Management API**: Full CRUD operations, visibility settings, templates
 - ✅ **AI Integration**: Claude Sonnet/Opus 4 models integrated with streaming responses
 - ✅ **Billing System**: Stripe integration, credit-based usage, webhook handling
-- ✅ **Database Schema**: Complete PostgreSQL schema with all tables and relationships
-- ✅ **Infrastructure**: Express server, Redis caching, WebSocket support, rate limiting
-- ✅ **File Management**: Project file storage with unique path constraints
+- ✅ **Database Schema**: Complete PostgreSQL schema via Supabase with RLS policies
+- ✅ **Infrastructure**: Express server, in-memory caching, WebSocket support, rate limiting
+- ✅ **File Management**: Project file storage with Supabase integration
+- ✅ **Supabase Integration**: Full authentication, database, and RLS implementation
+- ✅ **Chat API**: Session management and history tracking
 
-#### Frontend (40% Complete)
-- ✅ **Authentication UI**: Login/register pages with form validation
-- ✅ **Dashboard**: Project grid/list view, search, project cards
-- ✅ **Project Editor Structure**: Monaco editor integrated, tabs for different views
+#### Frontend (90% Complete)
+- ✅ **Authentication UI**: Login/register with GitHub OAuth and email/password
+- ✅ **Dashboard**: Real-time project list with search, grid/list views, project actions
+- ✅ **New Project Page**: Full implementation with templates and tech stack selection
+- ✅ **Project Creation Flow**: Working end-to-end with Supabase storage
 - ✅ **Landing Page**: Marketing content and call-to-actions
-- ✅ **Component Library**: shadcn/ui components, theme support
-- ✅ **State Management**: Zustand for auth, protected routes
+- ✅ **Component Library**: shadcn/ui components with Radix UI primitives
+- ✅ **State Management**: Zustand with Supabase session management
+- ✅ **Protected Routes**: Automatic auth checking and redirects
+- ✅ **AI Chat Interface**: Full chat UI with streaming responses, markdown rendering, syntax highlighting
+- ✅ **File Explorer**: Tree view of project files with navigation (read-only)
+- ✅ **Monaco Editor**: Integrated code editor with syntax highlighting (read-only)
+- ✅ **File Generation Flow**: AI-generated files are saved and displayed automatically
+- ✅ **Live Preview**: Sandpack integration for in-browser React app preview
+- ✅ **Project Navigation**: Click to open projects, view files, delete projects
+- ✅ **File Management Decision**: Files are read-only to maintain code integrity
 
 ### 🚧 In Progress / TODO
 
 #### Critical Missing Features
-- ❌ **New Project Creation Page**: Route exists but page not implemented
-- ❌ **AI Chat Interface**: Structure exists but marked as "Coming Soon"
-- ❌ **Live Preview Rendering**: iframe exists but no code execution
-- ❌ **File Explorer/Tree**: No UI for managing project files
-- ❌ **Code Execution Engine**: Need sandboxed environment for running generated code
-- ❌ **Deployment Integration**: API structure exists but not connected
+- ❌ **Deployment Integration**: API structure exists but not connected to Netlify/Vercel
 - ❌ **Project Templates Content**: Template types defined but no actual content
+- ❌ **Terminal Functionality**: Currently shows mock output only
+- ❌ **Preview Improvements**: Sandpack works but needs better error handling and configuration
+- ❌ **Project Rename**: Ability to rename projects after creation
 
 #### Additional Features Needed
-- ❌ Email verification system
+- ❌ Email verification UI (backend ready)
 - ❌ Password reset flow
-- ❌ OAuth implementation (GitHub/Google)
 - ❌ User settings/profile pages
 - ❌ Billing management UI
 - ❌ Terminal functionality
 - ❌ Collaboration features UI
 - ❌ Project settings page
 - ❌ Export/import functionality
+- ❌ Real-time collaboration via WebSocket
 
 ### 🎯 Next Steps Priority
 
-1. **Create New Project Page** - Essential for users to start building
-2. **Implement AI Chat Interface** - Core feature for natural language interaction
-3. **Build Live Preview System** - Critical for seeing generated code in action
-4. **Add File Management UI** - Users need to navigate and edit project files
-5. **Create Code Execution Engine** - Required for live preview functionality
+1. **Implement AI Chat Interface** ✅ - Core feature for natural language interaction
+2. **Build Live Preview System** ✅ - Critical for seeing generated code in action
+3. **Add File Explorer UI** ✅ - Users need to navigate project files
+4. **Implement Monaco Editor** ✅ - For viewing generated code
+5. **Deployment Integration** - Connect to Netlify/Vercel for one-click deploy
+
+### 📊 Today's Progress Summary (Jan 21, 2025)
+
+#### Major Accomplishments:
+1. **Migrated to Supabase Auth** - Replaced custom JWT auth with Supabase
+2. **Implemented GitHub OAuth** - Users can sign in/up with GitHub
+3. **Created New Project Page** - Full UI with templates and project options
+4. **Fixed Database Integration** - Set up RLS policies and triggers
+5. **Established Project Creation Flow** - End-to-end working with Supabase
+6. **Implemented AI Chat Interface** - Complete chat UI with streaming responses
+7. **Added File Explorer & Monaco Editor** - Files generated by AI are displayed (read-only)
+8. **Connected File Generation Flow** - AI-generated code is automatically saved and viewable
+9. **Updated Dashboard** - Shows real projects from database with actions
+10. **Added Live Preview** - Integrated Sandpack for in-browser React app preview
+11. **File Management Decision** - Implemented read-only files to maintain code integrity
+
+#### Technical Decisions Made:
+- Chose Supabase over custom PostgreSQL for easier auth and RLS
+- Implemented in-memory caching instead of Redis for development
+- Used Supabase client for direct database operations where possible
+- Kept backend API for AI generation and complex operations
+
+#### Current Architecture:
+```
+Frontend (React + Vite)
+    ↓
+Supabase Auth → Supabase Database (with RLS)
+    ↓
+Backend API (Express)
+    ↓
+Anthropic Claude API
+```
+
+### 🚀 Current Working Features
+
+Users can now:
+1. **Register/Login** via email or GitHub OAuth
+2. **Create Projects** with name, description, template selection
+3. **View Dashboard** with real projects, search, and delete functionality
+4. **Chat with AI** to generate full React applications with streaming responses
+5. **View Generated Files** in a file explorer tree with folder structure
+6. **Read Code** in Monaco editor with syntax highlighting for multiple languages
+7. **Switch Between Files** by clicking in the file explorer
+8. **Preview React Apps** in real-time using Sandpack (in-browser bundler)
+9. **Navigate Projects** from dashboard with quick actions menu
+
+What's NOT working yet:
+1. **Terminal** - Shows mock output only
+2. **Deployment** - Can't deploy to Netlify/Vercel
+3. **Templates** - No pre-built project templates
+4. **Collaboration** - Can't share or invite team members
+5. **Preview Enhancements** - Device switching, fullscreen mode not implemented
+6. **Project Management** - Can't rename projects after creation
+
+### 🔒 Design Decisions
+
+#### File Management Philosophy
+- **Files are read-only**: All code modifications happen through AI generation only
+- **No manual file operations**: No create, delete, rename, or edit capabilities
+- **Maintains code integrity**: Prevents breaking AI-generated code relationships
+- **Single source of truth**: AI understands the full context and manages all changes
+
+### 🔧 Environment Setup Required
+
+1. **Supabase Project** ✅
+   - Database URL configured
+   - Authentication enabled
+   - RLS policies applied
+
+2. **API Keys** ✅
+   - Anthropic API key for Claude
+   - Supabase keys configured
+
+3. **OAuth Providers**
+   - GitHub OAuth configured ✅
+   - Google OAuth disabled (optional)
 
 ## 🏗️ Development Roadmap
 

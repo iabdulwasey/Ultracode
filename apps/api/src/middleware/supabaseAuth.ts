@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { AppError } from './errorHandler.js';
-import { supabase } from '../config/supabase.js';
+import { getSupabase } from '../config/supabase.js';
+import { logger } from '../utils/logger.js';
 
 interface SupabaseJwtPayload {
   sub: string; // user id
@@ -17,8 +18,8 @@ declare global {
     interface Request {
       user?: {
         id: string;
-        email?: string;
-        role?: string;
+        email: string;
+        role: string;
       };
     }
   }
@@ -33,21 +34,31 @@ export const authenticateSupabase = async (
     const token = req.headers.authorization?.replace('Bearer ', '');
 
     if (!token) {
+      logger.warn('No authentication token provided');
       throw new AppError('Authentication required', 401);
     }
 
-    // Verify the token with Supabase
+    logger.debug('Verifying token with Supabase');
+    
+    // Get Supabase client and verify the token
+    const supabase = getSupabase();
     const { data: { user }, error } = await supabase.auth.getUser(token);
 
-    if (error || !user) {
+    if (error) {
+      logger.error('Supabase auth error:', error);
+      throw new AppError('Invalid token', 401);
+    }
+    
+    if (!user) {
+      logger.warn('No user found for token');
       throw new AppError('Invalid token', 401);
     }
 
     // Set user info on request
     req.user = {
       id: user.id,
-      email: user.email,
-      role: user.role || 'user',
+      email: user.email ?? '',
+      role: 'user', // Supabase doesn't provide role in the user object by default
     };
 
     next();

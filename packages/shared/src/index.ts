@@ -1,20 +1,20 @@
 // User types
-export * from './types/user.js';
+export * from './types/user';
 
 // Project types
-export * from './types/project.js';
+export * from './types/project';
 
 // Chat types
-export * from './types/chat.js';
+export * from './types/chat';
 
 // Billing types
-export * from './types/billing.js';
+export * from './types/billing';
 
 // Deployment types
-export * from './types/deployment.js';
+export * from './types/deployment';
 
 // API types
-export * from './types/api.js';
+export * from './types/api';
 
 // Constants
 export const PLAN_LIMITS = {

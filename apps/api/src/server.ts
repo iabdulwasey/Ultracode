@@ -13,15 +13,27 @@ import authRoutes from './routes/auth.routes.js';
 import projectRoutes from './routes/project.routes.js';
 import generateRoutes from './routes/generate.routes.js';
 import billingRoutes from './routes/billing.routes.js';
+import chatRoutes from './routes/chat.routes.js';
+import deploymentRoutes from './routes/deployment.routes.js';
 import { logger } from './utils/logger.js';
 import { connectDatabase } from './config/database.js';
 import { initializeRedis } from './config/redis.js';
+import { initializeSupabase } from './config/supabase.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables from the root .env file
 dotenv.config({ path: path.join(__dirname, '../../../.env') });
+
+// Log to verify env vars are loaded
+console.log('Environment check:', {
+  NODE_ENV: process.env.NODE_ENV,
+  SUPABASE_URL: process.env.SUPABASE_URL ? 'loaded' : 'missing',
+  SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY ? 'loaded' : 'missing',
+  API_URL: process.env.API_URL,
+  PORT: process.env.PORT
+});
 
 const app = express();
 const httpServer = createServer(app);
@@ -46,7 +58,7 @@ app.use(morgan('combined', { stream: { write: (message) => logger.info(message.t
 app.use('/api/', rateLimiter);
 
 // Health check
-app.get('/health', (req, res) => {
+app.get('/health', (_, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
@@ -55,6 +67,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/projects', projectRoutes);
 app.use('/api/generate', generateRoutes);
 app.use('/api/billing', billingRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api', deploymentRoutes);
 
 // WebSocket handling
 io.on('connection', (socket) => {
@@ -83,6 +97,9 @@ const PORT = process.env.PORT || 3000;
 
 async function startServer() {
   try {
+    // Initialize Supabase client
+    initializeSupabase();
+    
     // Connect to database
     await connectDatabase();
     

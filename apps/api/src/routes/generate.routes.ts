@@ -9,11 +9,23 @@ import { generateRateLimiter } from '../middleware/rateLimiter.js';
 import { validateRequest } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { io } from '../server.js';
+import { FileSystemService } from '../services/fileSystem.service.js';
 
 const router = Router();
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+
+// Initialize Anthropic client lazily
+let anthropic: Anthropic | null = null;
+
+const getAnthropic = () => {
+  if (!anthropic) {
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      throw new AppError('Anthropic API key not configured', 500);
+    }
+    anthropic = new Anthropic({ apiKey });
+  }
+  return anthropic;
+};
 
 // All routes require authentication
 router.use(authenticateSupabase);
@@ -88,12 +100,21 @@ ${context?.selectedCode ? `Selected code:\n${context.selectedCode}` : ''}`;
 
 // Code generation endpoint
 router.post('/', generateRateLimiter, validateRequest(generateSchema), async (req, res, next) => {
+  logger.info('Generate endpoint called', { 
+    user: req.user,
+    hasAuthHeader: !!req.headers.authorization 
+  });
+  
   const client = await getClient();
   const redis = getRedis();
   
   try {
     const { projectId, prompt, context, options = {} } = req.body;
-    const userId = req.user!.id;
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      throw new AppError('User not authenticated', 401);
+    }
 
     // Check project ownership
     const projectResult = await query(
@@ -126,7 +147,7 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     });
 
     // Create message with Anthropic
-    const stream = await anthropic.messages.create({
+    const stream = await getAnthropic().messages.create({
       model: options.model || 'claude-sonnet-4-20250514',
       messages: [
         { 
@@ -252,7 +273,7 @@ router.post('/explain', validateRequest(z.object({
   try {
     const { code, question, language } = req.body;
 
-    const message = await anthropic.messages.create({
+    const message = await getAnthropic().messages.create({
       model: 'claude-sonnet-4-20250514',
       messages: [
         {

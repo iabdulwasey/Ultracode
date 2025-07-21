@@ -79,6 +79,15 @@ class ApiClient {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) throw new Error('Not authenticated');
 
+    console.log('Creating project with data:', {
+      user_id: user.id,
+      name: projectData.name,
+      description: projectData.description,
+      visibility: projectData.visibility || 'private',
+      tech_stack: projectData.techStack || {},
+      template: projectData.template,
+    });
+
     const { data, error } = await supabase
       .from('projects')
       .insert({
@@ -92,7 +101,10 @@ class ApiClient {
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase error:', error);
+      throw new Error(error.message || 'Failed to create project');
+    }
 
     // If there's an initial prompt, create the first chat session
     if (projectData.initialPrompt) {
@@ -204,6 +216,48 @@ class ApiClient {
       .eq('id', id);
 
     if (error) throw error;
+  }
+
+  // Deployment endpoints
+  async deployProject(projectId: string, provider: 'netlify' | 'vercel' = 'netlify') {
+    return this.request<{
+      success: boolean;
+      deployment: {
+        url: string;
+        siteId?: string;
+        deployId?: string;
+        deploymentId?: string;
+        status?: string;
+      };
+    }>(`/deploy/${projectId}`, {
+      method: 'POST',
+      body: JSON.stringify({ provider }),
+    });
+  }
+
+  async getDeployments(projectId: string) {
+    return this.request<{
+      deployments: Array<{
+        id: string;
+        project_id: string;
+        provider: string;
+        url: string;
+        status: string;
+        metadata: any;
+        created_at: string;
+      }>;
+    }>(`/deployments/${projectId}`);
+  }
+
+  async getDeploymentStatus(deploymentId: string) {
+    return this.request<{
+      deployment: {
+        id: string;
+        status: string;
+        url: string;
+        provider: string;
+      };
+    }>(`/deployment/${deploymentId}/status`);
   }
 }
 

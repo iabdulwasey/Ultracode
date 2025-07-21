@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/authStore';
+import { api } from '@/lib/api';
 import {
   Plus,
   Search,
@@ -12,6 +13,10 @@ import {
   Globe,
   Lock,
   MoreVertical,
+  FileCode,
+  FolderOpen,
+  Trash2,
+  Edit3,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -19,53 +24,91 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
+import { formatDistanceToNow } from 'date-fns';
 
 interface Project {
   id: string;
   name: string;
-  description: string;
-  visibility: 'public' | 'private';
+  description?: string;
+  visibility: 'public' | 'private' | 'workspace';
   updatedAt: string;
+  createdAt: string;
   deploymentUrl?: string;
-  thumbnail?: string;
+  template?: string;
+  filesCount?: number;
 }
-
-// Mock data for demo
-const mockProjects: Project[] = [
-  {
-    id: '1',
-    name: 'E-commerce Platform',
-    description: 'A modern online shopping experience',
-    visibility: 'public',
-    updatedAt: '2 hours ago',
-    deploymentUrl: 'https://demo-shop.netlify.app',
-  },
-  {
-    id: '2',
-    name: 'Task Management App',
-    description: 'Collaborate with your team efficiently',
-    visibility: 'private',
-    updatedAt: '1 day ago',
-  },
-  {
-    id: '3',
-    name: 'Portfolio Website',
-    description: 'Showcase your work beautifully',
-    visibility: 'public',
-    updatedAt: '3 days ago',
-    deploymentUrl: 'https://my-portfolio.vercel.app',
-  },
-];
 
 export default function DashboardPage() {
   const user = useAuthStore((state) => state.user);
+  const navigate = useNavigate();
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
-  const [projects] = useState(mockProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [editingProjectId, setEditingProjectId] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState('');
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
+    try {
+      setLoading(true);
+      const data = await api.getProjects();
+      
+      // Transform the data to match our interface
+      const transformedProjects = data.map((project: any) => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        visibility: project.visibility,
+        updatedAt: formatDistanceToNow(new Date(project.updated_at), { addSuffix: true }),
+        createdAt: project.created_at,
+        template: project.template,
+        filesCount: project.files_count || 0,
+      }));
+      
+      setProjects(transformedProjects);
+    } catch (err) {
+      console.error('Failed to load projects:', err);
+      setError('Failed to load projects');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteProject = async (projectId: string) => {
+    if (!confirm('Are you sure you want to delete this project?')) return;
+    
+    try {
+      await api.deleteProject(projectId);
+      await loadProjects();
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+    }
+  };
+
+  const handleRenameProject = async (projectId: string, newName: string) => {
+    if (!newName.trim() || newName === projects.find(p => p.id === projectId)?.name) {
+      setEditingProjectId(null);
+      return;
+    }
+    
+    try {
+      await api.updateProject(projectId, { name: newName.trim() });
+      await loadProjects();
+      setEditingProjectId(null);
+    } catch (err) {
+      console.error('Failed to rename project:', err);
+      alert('Failed to rename project. Please try again.');
+    }
+  };
 
   const filteredProjects = projects.filter((project) =>
     project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    project.description.toLowerCase().includes(searchQuery.toLowerCase())
+    (project.description?.toLowerCase().includes(searchQuery.toLowerCase()) ?? false)
   );
 
   return (
@@ -138,31 +181,82 @@ export default function DashboardPage() {
           {filteredProjects.map((project) => (
             <div
               key={project.id}
-              className={`border rounded-lg p-6 hover:shadow-lg transition-shadow ${
+              className={`border rounded-lg p-6 hover:shadow-lg transition-shadow cursor-pointer ${
                 viewMode === 'list' ? 'flex items-center justify-between' : ''
               }`}
+              onClick={() => navigate(`/project/${project.id}`)}
             >
               <div className={viewMode === 'list' ? 'flex-1' : ''}>
                 <div className="flex items-start justify-between mb-2">
-                  <h3 className="text-lg font-semibold">{project.name}</h3>
+                  {editingProjectId === project.id ? (
+                    <Input
+                      value={editingProjectName}
+                      onChange={(e) => setEditingProjectName(e.target.value)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                          handleRenameProject(project.id, editingProjectName);
+                        } else if (e.key === 'Escape') {
+                          setEditingProjectId(null);
+                        }
+                      }}
+                      onBlur={() => handleRenameProject(project.id, editingProjectName)}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-8 max-w-[200px]"
+                      autoFocus
+                    />
+                  ) : (
+                    <h3 className="text-lg font-semibold">{project.name}</h3>
+                  )}
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8">
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <MoreVertical className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Edit</DropdownMenuItem>
-                      <DropdownMenuItem>Duplicate</DropdownMenuItem>
-                      <DropdownMenuItem>Export</DropdownMenuItem>
-                      <DropdownMenuItem className="text-destructive">
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/project/${project.id}`);
+                      }}>
+                        <FolderOpen className="mr-2 h-4 w-4" />
+                        Open Project
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/project/${project.id}?tab=code`);
+                      }}>
+                        <FileCode className="mr-2 h-4 w-4" />
+                        View Files
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingProjectId(project.id);
+                        setEditingProjectName(project.name);
+                      }}>
+                        <Edit3 className="mr-2 h-4 w-4" />
+                        Rename
+                      </DropdownMenuItem>
+                      <DropdownMenuItem 
+                        className="text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteProject(project.id);
+                        }}
+                      >
+                        <Trash2 className="mr-2 h-4 w-4" />
                         Delete
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
                 <p className="text-sm text-muted-foreground mb-4">
-                  {project.description}
+                  {project.description || 'No description'}
                 </p>
                 <div className="flex items-center gap-4 text-sm text-muted-foreground">
                   <div className="flex items-center gap-1">
