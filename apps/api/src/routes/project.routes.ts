@@ -1,0 +1,319 @@
+import { Router } from 'express';
+import { z } from 'zod';
+import { v4 as uuidv4 } from 'uuid';
+import { query, getClient } from '../config/database.js';
+import { AppError } from '../middleware/errorHandler.js';
+import { authenticate } from '../middleware/auth.js';
+import { validateRequest } from '../utils/validation.js';
+import { logger } from '../utils/logger.js';
+import { io } from '../server.js';
+
+const router = Router();
+
+// All routes require authentication
+router.use(authenticate);
+
+// Validation schemas
+const createProjectSchema = z.object({
+  body: z.object({
+    name: z.string().min(3).max(50),
+    description: z.string().max(200).optional(),
+    visibility: z.enum(['public', 'private', 'workspace']).default('private'),
+    template: z.enum(['landing', 'saas', 'ecommerce', 'blank']).optional(),
+    techStack: z.object({
+      frontend: z.enum(['react', 'vue', 'angular']).default('react'),
+      styling: z.enum(['tailwind', 'css', 'styled-components']).default('tailwind'),
+      backend: z.enum(['supabase', 'firebase', 'custom']).optional(),
+    }).optional(),
+  }),
+});
+
+const updateProjectSchema = z.object({
+  body: z.object({
+    name: z.string().min(3).max(50).optional(),
+    description: z.string().max(200).optional(),
+    visibility: z.enum(['public', 'private', 'workspace']).optional(),
+  }),
+});
+
+// Get all projects for user
+router.get('/', async (req, res, next) => {
+  try {
+    const { page = 1, limit = 20, visibility, search, sortBy = 'updated', order = 'desc' } = req.query;
+    const offset = (Number(page) - 1) * Number(limit);
+
+    let queryText = `
+      SELECT p.*, COUNT(pf.id) as file_count,
+        (SELECT COUNT(*) FROM deployments WHERE project_id = p.id) as deployment_count
+      FROM projects p
+      LEFT JOIN project_files pf ON p.id = pf.project_id
+      WHERE p.user_id = $1 AND p.deleted_at IS NULL
+    `;
+    const params: any[] = [req.user!.sub];
+    let paramIndex = 2;
+
+    if (visibility && visibility !== 'all') {
+      queryText += ` AND p.visibility = $${paramIndex}`;
+      params.push(visibility);
+      paramIndex++;
+    }
+
+    if (search) {
+      queryText += ` AND (p.name ILIKE $${paramIndex} OR p.description ILIKE $${paramIndex})`;
+      params.push(`%${search}%`);
+      paramIndex++;
+    }
+
+    queryText += ` GROUP BY p.id`;
+
+    // Sorting
+    const validSortColumns = ['created', 'updated', 'name'];
+    const sortColumn = validSortColumns.includes(sortBy as string) ? sortBy : 'updated';
+    const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
+    queryText += ` ORDER BY p.${sortColumn === 'created' ? 'created_at' : sortColumn === 'updated' ? 'updated_at' : 'name'} ${sortOrder}`;
+
+    // Pagination
+    queryText += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(Number(limit), offset);
+
+    const result = await query(queryText, params);
+
+    // Get total count
+    const countResult = await query(
+      'SELECT COUNT(*) FROM projects WHERE user_id = $1 AND deleted_at IS NULL',
+      [req.user!.sub]
+    );
+
+    res.json({
+      projects: result.rows.map(project => ({
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        visibility: project.visibility,
+        techStack: project.tech_stack,
+        thumbnailUrl: project.thumbnail_url,
+        deploymentUrl: project.deployment_url,
+        githubRepo: project.github_repo,
+        fileCount: parseInt(project.file_count),
+        deploymentCount: parseInt(project.deployment_count),
+        createdAt: project.created_at,
+        updatedAt: project.updated_at,
+        lastAccessedAt: project.last_accessed_at,
+      })),
+      pagination: {
+        page: Number(page),
+        limit: Number(limit),
+        total: parseInt(countResult.rows[0].count),
+        totalPages: Math.ceil(parseInt(countResult.rows[0].count) / Number(limit)),
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Create new project
+router.post('/', validateRequest(createProjectSchema), async (req, res, next) => {
+  const client = await getClient();
+  
+  try {
+    await client.query('BEGIN');
+
+    const { name, description, visibility, template, techStack } = req.body;
+    const projectId = uuidv4();
+
+    // Create project
+    const result = await client.query(
+      `INSERT INTO projects (id, user_id, name, description, visibility, tech_stack) 
+       VALUES ($1, $2, $3, $4, $5, $6) 
+       RETURNING *`,
+      [projectId, req.user!.sub, name, description, visibility, techStack || {}]
+    );
+
+    const project = result.rows[0];
+
+    // Create initial files based on template
+    if (template && template !== 'blank') {
+      // TODO: Load template files
+      await client.query(
+        `INSERT INTO project_files (project_id, path, content, type) 
+         VALUES ($1, $2, $3, $4)`,
+        [projectId, 'src/App.tsx', '// Generated by Ultracode', 'typescript']
+      );
+    }
+
+    // Create initial chat session
+    await client.query(
+      `INSERT INTO chat_sessions (project_id, user_id, messages) 
+       VALUES ($1, $2, $3)`,
+      [projectId, req.user!.sub, JSON.stringify([])]
+    );
+
+    await client.query('COMMIT');
+
+    logger.info(`Project created: ${projectId} by user ${req.user!.sub}`);
+
+    res.status(201).json({
+      project: {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        visibility: project.visibility,
+        techStack: project.tech_stack,
+        createdAt: project.created_at,
+      },
+    });
+  } catch (error) {
+    await client.query('ROLLBACK');
+    next(error);
+  } finally {
+    client.release();
+  }
+});
+
+// Get project details
+router.get('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    // Get project with files
+    const projectResult = await query(
+      `SELECT p.*, 
+        array_agg(
+          json_build_object(
+            'path', pf.path,
+            'content', pf.content,
+            'type', pf.type,
+            'size', pf.size
+          ) ORDER BY pf.path
+        ) FILTER (WHERE pf.id IS NOT NULL) as files
+       FROM projects p
+       LEFT JOIN project_files pf ON p.id = pf.project_id AND pf.deleted_at IS NULL
+       WHERE p.id = $1 AND p.user_id = $2 AND p.deleted_at IS NULL
+       GROUP BY p.id`,
+      [id, req.user!.sub]
+    );
+
+    if (projectResult.rows.length === 0) {
+      throw new AppError('Project not found', 404);
+    }
+
+    const project = projectResult.rows[0];
+
+    // Get deployments
+    const deploymentsResult = await query(
+      `SELECT * FROM deployments 
+       WHERE project_id = $1 
+       ORDER BY created_at DESC 
+       LIMIT 10`,
+      [id]
+    );
+
+    // Update last accessed
+    await query(
+      'UPDATE projects SET last_accessed_at = NOW() WHERE id = $1',
+      [id]
+    );
+
+    res.json({
+      project: {
+        id: project.id,
+        name: project.name,
+        description: project.description,
+        visibility: project.visibility,
+        techStack: project.tech_stack,
+        files: project.files || [],
+        deployments: deploymentsResult.rows.map(d => ({
+          id: d.id,
+          provider: d.provider,
+          url: d.url,
+          status: d.status,
+          deployedAt: d.deployed_at,
+        })),
+        createdAt: project.created_at,
+        updatedAt: project.updated_at,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Update project
+router.patch('/:id', validateRequest(updateProjectSchema), async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const updates = req.body;
+
+    // Build dynamic update query
+    const updateFields = [];
+    const values = [];
+    let paramIndex = 1;
+
+    Object.entries(updates).forEach(([key, value]) => {
+      if (value !== undefined) {
+        updateFields.push(`${key === 'name' ? 'name' : key === 'description' ? 'description' : 'visibility'} = $${paramIndex}`);
+        values.push(value);
+        paramIndex++;
+      }
+    });
+
+    if (updateFields.length === 0) {
+      throw new AppError('No valid fields to update', 400);
+    }
+
+    values.push(new Date(), id, req.user!.sub);
+    const queryText = `
+      UPDATE projects 
+      SET ${updateFields.join(', ')}, updated_at = $${paramIndex}
+      WHERE id = $${paramIndex + 1} AND user_id = $${paramIndex + 2}
+      RETURNING *
+    `;
+
+    const result = await query(queryText, values);
+
+    if (result.rows.length === 0) {
+      throw new AppError('Project not found', 404);
+    }
+
+    // Notify connected clients
+    io.to(`project:${id}`).emit('project:updated', {
+      projectId: id,
+      updates,
+      updatedBy: req.user!.sub,
+    });
+
+    res.json({
+      project: result.rows[0],
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Delete project
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      `UPDATE projects 
+       SET deleted_at = NOW() 
+       WHERE id = $1 AND user_id = $2 AND deleted_at IS NULL
+       RETURNING id`,
+      [id, req.user!.sub]
+    );
+
+    if (result.rows.length === 0) {
+      throw new AppError('Project not found', 404);
+    }
+
+    logger.info(`Project deleted: ${id} by user ${req.user!.sub}`);
+
+    res.status(204).send();
+  } catch (error) {
+    next(error);
+  }
+});
+
+export default router;

@@ -1,0 +1,113 @@
+import express from 'express';
+import cors from 'cors';
+import helmet from 'helmet';
+import morgan from 'morgan';
+import { createServer } from 'http';
+import { Server } from 'socket.io';
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { errorHandler } from './middleware/errorHandler.js';
+import { rateLimiter } from './middleware/rateLimiter.js';
+import authRoutes from './routes/auth.routes.js';
+import projectRoutes from './routes/project.routes.js';
+import generateRoutes from './routes/generate.routes.js';
+import billingRoutes from './routes/billing.routes.js';
+import { logger } from './utils/logger.js';
+import { connectDatabase } from './config/database.js';
+import { initializeRedis } from './config/redis.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from the root .env file
+dotenv.config({ path: path.join(__dirname, '../../../.env') });
+
+const app = express();
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+  cors: {
+    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    credentials: true,
+  },
+});
+
+// Middleware
+app.use(helmet());
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+  credentials: true,
+}));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan('combined', { stream: { write: (message) => logger.info(message.trim()) } }));
+
+// Rate limiting
+app.use('/api/', rateLimiter);
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// API routes
+app.use('/api/auth', authRoutes);
+app.use('/api/projects', projectRoutes);
+app.use('/api/generate', generateRoutes);
+app.use('/api/billing', billingRoutes);
+
+// WebSocket handling
+io.on('connection', (socket) => {
+  logger.info(`Client connected: ${socket.id}`);
+
+  socket.on('join-project', (projectId) => {
+    socket.join(`project:${projectId}`);
+    logger.info(`Socket ${socket.id} joined project ${projectId}`);
+  });
+
+  socket.on('leave-project', (projectId) => {
+    socket.leave(`project:${projectId}`);
+    logger.info(`Socket ${socket.id} left project ${projectId}`);
+  });
+
+  socket.on('disconnect', () => {
+    logger.info(`Client disconnected: ${socket.id}`);
+  });
+});
+
+// Error handling
+app.use(errorHandler);
+
+// Start server
+const PORT = process.env.PORT || 3000;
+
+async function startServer() {
+  try {
+    // Connect to database
+    await connectDatabase();
+    
+    // Initialize Redis
+    await initializeRedis();
+    
+    httpServer.listen(PORT, () => {
+      logger.info(`Server running on port ${PORT}`);
+      logger.info(`Environment: ${process.env.NODE_ENV}`);
+    });
+  } catch (error) {
+    logger.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM received, shutting down gracefully');
+  httpServer.close(() => {
+    logger.info('Server closed');
+    process.exit(0);
+  });
+});
+
+export { app, io };
