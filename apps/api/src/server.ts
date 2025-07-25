@@ -15,6 +15,7 @@ import generateRoutes from './routes/generate.routes.js';
 import billingRoutes from './routes/billing.routes.js';
 import chatRoutes from './routes/chat.routes.js';
 import deploymentRoutes from './routes/deployment.routes.js';
+import localPreviewRoutes from './routes/localPreview.routes.js';
 import { logger } from './utils/logger.js';
 import { connectDatabase } from './config/database.js';
 import { initializeRedis } from './config/redis.js';
@@ -24,7 +25,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Load environment variables from the root .env file
-dotenv.config({ path: path.join(__dirname, '../../../.env') });
+dotenv.config({ path: path.resolve(process.cwd(), '../../.env') });
 
 // Log to verify env vars are loaded
 console.log('Environment check:', {
@@ -68,6 +69,7 @@ app.use('/api/projects', projectRoutes);
 app.use('/api/generate', generateRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/local-preview', localPreviewRoutes);
 app.use('/api', deploymentRoutes);
 
 // WebSocket handling
@@ -109,6 +111,7 @@ async function startServer() {
     httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV}`);
+      logger.info(`File sync service initialized and listening for changes`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);

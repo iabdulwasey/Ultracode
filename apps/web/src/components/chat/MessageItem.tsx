@@ -25,7 +25,7 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
   return (
     <div
       className={cn(
-        'flex gap-3',
+        'flex gap-3 w-full',
         isUser ? 'justify-end' : 'justify-start'
       )}
     >
@@ -37,16 +37,16 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
       
       <div
         className={cn(
-          'max-w-[80%] rounded-lg px-4 py-2 relative group',
+          'max-w-[80%] min-w-0 rounded-lg px-4 py-2 relative group overflow-hidden word-wrap',
           isUser
             ? 'bg-primary text-primary-foreground'
             : 'bg-muted'
         )}
       >
         {isUser ? (
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          <p className="whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
         ) : (
-          <div className="prose prose-sm dark:prose-invert max-w-none">
+          <div className="prose prose-sm dark:prose-invert max-w-none overflow-hidden break-words">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
@@ -56,42 +56,44 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
                   
                   if (!inline && language) {
                     return (
-                      <CodeBlock
-                        language={language}
-                        code={String(children).replace(/\n$/, '')}
-                      />
+                      <div className="overflow-hidden">
+                        <CodeBlock
+                          language={language}
+                          code={String(children).replace(/\n$/, '')}
+                        />
+                      </div>
                     );
                   }
                   
                   return (
-                    <code className="bg-muted px-1 py-0.5 rounded text-sm" {...props}>
+                    <code className="bg-muted px-1 py-0.5 rounded text-sm break-all overflow-wrap-anywhere" {...props}>
                       {children}
                     </code>
                   );
                 },
                 pre({ children }) {
-                  return <>{children}</>;
+                  return <div className="overflow-auto max-w-full">{children}</div>;
                 },
                 p({ children }) {
-                  return <p className="mb-2 last:mb-0">{children}</p>;
+                  return <p className="mb-2 last:mb-0 break-words overflow-wrap-anywhere">{children}</p>;
                 },
                 ul({ children }) {
-                  return <ul className="list-disc pl-4 mb-2">{children}</ul>;
+                  return <ul className="list-disc pl-4 mb-2 break-words">{children}</ul>;
                 },
                 ol({ children }) {
-                  return <ol className="list-decimal pl-4 mb-2">{children}</ol>;
+                  return <ol className="list-decimal pl-4 mb-2 break-words">{children}</ol>;
                 },
                 li({ children }) {
-                  return <li className="mb-1">{children}</li>;
+                  return <li className="mb-1 break-words overflow-wrap-anywhere">{children}</li>;
                 },
                 h1({ children }) {
-                  return <h1 className="text-xl font-bold mb-2">{children}</h1>;
+                  return <h1 className="text-xl font-bold mb-2 break-words overflow-wrap-anywhere">{children}</h1>;
                 },
                 h2({ children }) {
-                  return <h2 className="text-lg font-semibold mb-2">{children}</h2>;
+                  return <h2 className="text-lg font-semibold mb-2 break-words overflow-wrap-anywhere">{children}</h2>;
                 },
                 h3({ children }) {
-                  return <h3 className="text-base font-medium mb-2">{children}</h3>;
+                  return <h3 className="text-base font-medium mb-2 break-words overflow-wrap-anywhere">{children}</h3>;
                 },
               }}
             >

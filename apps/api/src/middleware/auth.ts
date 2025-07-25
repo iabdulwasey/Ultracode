@@ -1,20 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
 import { AppError } from './errorHandler.js';
+import { supabase } from '../config/supabase.js';
 
-interface JwtPayload {
+interface SupabaseJwtPayload {
   sub: string;
   email: string;
-  role: 'user' | 'admin';
-  plan: 'free' | 'lite' | 'pro' | 'enterprise';
+  role: string;
+  aud: string;
   iat: number;
   exp: number;
+  user_metadata?: any;
+  app_metadata?: any;
 }
 
 declare global {
   namespace Express {
     interface Request {
-      user?: JwtPayload;
+      user?: SupabaseJwtPayload;
     }
   }
 }
@@ -31,22 +33,45 @@ export const authenticate = async (
       throw new AppError('Authentication required', 401);
     }
 
-    const decoded = jwt.verify(
-      token,
-      process.env.JWT_SECRET!
-    ) as JwtPayload;
+    // Verify the Supabase JWT token
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(token);
 
-    req.user = decoded;
-    req.headers['x-user-plan'] = decoded.plan;
+      if (error || !user) {
+        console.error('Token verification failed:', error);
+        throw new AppError('Invalid token', 401);
+      }
+
+      // Create user object compatible with our routes
+      req.user = {
+        sub: user.id,
+        email: user.email!,
+        role: user.role || 'authenticated',
+        aud: user.aud,
+        iat: Math.floor(Date.now() / 1000),
+        exp: Math.floor(Date.now() / 1000) + 3600, // 1 hour from now
+        user_metadata: user.user_metadata,
+        app_metadata: user.app_metadata,
+      };
+
+    } catch (authError: any) {
+      console.error('Supabase connection error:', authError);
+      
+      // If it's a network error, provide more specific message
+      if (authError.code === 'ECONNRESET' || authError.message?.includes('fetch failed')) {
+        throw new AppError('Authentication service temporarily unavailable', 503);
+      }
+      
+      throw new AppError('Invalid token', 401);
+    }
 
     next();
   } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
-      next(new AppError('Token expired', 401));
-    } else if (error instanceof jwt.JsonWebTokenError) {
-      next(new AppError('Invalid token', 401));
-    } else {
+    console.error('Authentication error:', error);
+    if (error instanceof AppError) {
       next(error);
+    } else {
+      next(new AppError('Authentication failed', 401));
     }
   }
 };

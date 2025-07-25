@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  openvscode-server:
+    build:
+      context: ./docker/openvscode-server
+      dockerfile: Dockerfile
+    ports:
+      - "3200:3000"  # OpenVSCode Server port
+    volumes:
+      # Mount project files
+      - ./workspace:/home/workspace
+      # Persist VS Code extensions and settings
+      - vscode-extensions:/home/.openvscode-server/extensions
+      - vscode-settings:/home/.openvscode-server/data
+    environment:
+      - CONNECTION_TOKEN=${VSCODE_CONNECTION_TOKEN:-}
+      - VSCODE_PROXY_URI=${VSCODE_PROXY_URI:-}
+    networks:
+      - ultracode-network
+    restart: unless-stopped
+
+volumes:
+  vscode-extensions:
+  vscode-settings:
+
+networks:
+  ultracode-network:
+    driver: bridge

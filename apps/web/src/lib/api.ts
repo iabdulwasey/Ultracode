@@ -142,21 +142,35 @@ class ApiClient {
     if (error) throw error;
   }
 
-  // AI Generation endpoints - still use the backend API
+  // AI Generation endpoints - direct fetch for streaming support
   async generateCode(projectId: string, prompt: string, context?: any) {
+    // Get the current session from Supabase
     const { data: { session } } = await supabase.auth.getSession();
-    if (!session) throw new Error('Not authenticated');
+    const authToken = session?.access_token;
+    
+    if (!authToken) {
+      throw new Error('Not authenticated');
+    }
 
-    const response = await fetch(`${this.baseUrl}/api/generate`, {
+    const response = await fetch(`${this.baseUrl}/generate`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${session.access_token}`,
+        Authorization: `Bearer ${authToken}`,
       },
       body: JSON.stringify({
         projectId,
         prompt,
-        context,
+        context: context ? {
+          currentFile: context.currentFile,
+          selectedCode: context.selectedCode,
+          fileTree: context.fileTree,
+        } : undefined,
+        options: context ? {
+          model: context.model || 'claude-sonnet-4-20250514',
+          temperature: context.temperature || 0.7,
+          maxTokens: context.maxTokens || 32000,
+        } : undefined,
       }),
     });
 
@@ -258,6 +272,208 @@ class ApiClient {
         provider: string;
       };
     }>(`/deployment/${deploymentId}/status`);
+  }
+
+  // Preview/Sandbox endpoints
+  async createPreview(projectId: string, forceRecreate = false) {
+    return this.request<{
+      success: boolean;
+      message?: string;
+      sandbox: {
+        id?: string;
+        previewUrl?: string;
+        status: string;
+        isExisting: boolean;
+      };
+    }>('/preview', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, forceRecreate }),
+    });
+  }
+
+  async getPreviewStatus(projectId: string) {
+    return this.request<{
+      success: boolean;
+      sandbox: {
+        id: string;
+        previewUrl: string;
+        status: string;
+        projectType?: string;
+        createdAt?: string;
+        lastAccessed?: string;
+        expiresAt?: string;
+        isActive?: boolean;
+      } | null;
+    }>(`/preview/${projectId}`);
+  }
+
+  async updateSandboxAccess(sandboxId: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/preview/${sandboxId}/access`, {
+      method: 'POST',
+    });
+  }
+
+  async destroySandbox(sandboxId: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/preview/${sandboxId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getUserSandboxes(status?: string, limit = 10) {
+    const params = new URLSearchParams();
+    if (status && status !== 'all') params.append('status', status);
+    params.append('limit', limit.toString());
+    
+    return this.request<{
+      success: boolean;
+      sandboxes: Array<{
+        id: string;
+        project_id: string;
+        project_name: string;
+        sandbox_id: string;
+        preview_url: string;
+        status: string;
+        current_state: string;
+        created_at: string;
+        last_accessed: string;
+        expires_at: string;
+      }>;
+      total: number;
+    }>(`/preview?${params.toString()}`);
+  }
+
+  async syncSandboxFiles(sandboxId: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      fileCount: number;
+    }>(`/preview/${sandboxId}/sync`, {
+      method: 'POST',
+    });
+  }
+
+  async getSandboxStats() {
+    return this.request<{
+      success: boolean;
+      currentStats: {
+        total: number;
+        active: number;
+        creating: number;
+        errors: number;
+      };
+      historicalStats: Array<{
+        date: string;
+        total_sandboxes: number;
+        successful_sandboxes: number;
+        failed_sandboxes: number;
+        avg_setup_time_seconds: number;
+        unique_users: number;
+        unique_projects: number;
+      }>;
+    }>('/preview/stats/usage');
+  }
+
+  async cleanupSandboxes() {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>('/preview/cleanup', {
+      method: 'POST',
+    });
+  }
+
+  async getSyncStatus(projectId: string) {
+    return this.request<{
+      success: boolean;
+      syncStatus: {
+        isActive: boolean;
+        pendingJobs: number;
+        lastSync?: string;
+      };
+    }>(`/preview/${projectId}/sync-status`);
+  }
+
+  async triggerManualSync(projectId: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      fileCount?: number;
+    }>(`/preview/${projectId}/sync`, {
+      method: 'POST',
+    });
+  }
+
+  // Local Preview endpoints
+  async createLocalPreview(projectId: string, forceRecreate = false) {
+    return this.request<{
+      success: boolean;
+      preview: {
+        projectId: string;
+        url: string;
+        port: number;
+        status: string;
+        isExisting: boolean;
+      };
+    }>('/local-preview', {
+      method: 'POST',
+      body: JSON.stringify({ projectId, forceRecreate }),
+    });
+  }
+
+  async getLocalPreviewStatus(projectId: string) {
+    return this.request<{
+      success: boolean;
+      preview: {
+        projectId: string;
+        url: string;
+        port: number;
+        status: string;
+      } | null;
+    }>(`/local-preview/${projectId}`);
+  }
+
+  async updateLocalPreview(projectId: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+      preview: {
+        projectId: string;
+        url: string;
+        port: number;
+        status: string;
+      };
+    }>(`/local-preview/${projectId}/update`, {
+      method: 'POST',
+    });
+  }
+
+  async stopLocalPreview(projectId: string) {
+    return this.request<{
+      success: boolean;
+      message: string;
+    }>(`/local-preview/${projectId}`, {
+      method: 'DELETE',
+    });
+  }
+
+  async getUserLocalPreviews() {
+    return this.request<{
+      success: boolean;
+      previews: Array<{
+        projectId: string;
+        projectName: string;
+        url: string;
+        port: number;
+        status: string;
+      }>;
+      total: number;
+    }>('/local-preview');
   }
 }
 

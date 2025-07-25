@@ -1,0 +1,434 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { 
+  Play, 
+  Square, 
+  RotateCcw, 
+  Monitor, 
+  Tablet, 
+  Smartphone,
+  Maximize2,
+  RefreshCw,
+  AlertCircle,
+  Loader2
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
+import { useToast } from '@/components/ui/use-toast';
+
+type DeviceType = 'desktop' | 'tablet' | 'mobile';
+type PreviewStatus = 'starting' | 'ready' | 'error' | null;
+
+interface LocalPreviewProps {
+  projectId: string;
+  className?: string;
+}
+
+interface PreviewInfo {
+  projectId: string;
+  url: string;
+  port: number;
+  status: PreviewStatus;
+  isExisting?: boolean;
+}
+
+const deviceConfigs = {
+  desktop: {
+    width: '100%',
+    height: '100%',
+    icon: Monitor,
+    label: 'Desktop'
+  },
+  tablet: {
+    width: '768px',
+    height: '1024px',
+    icon: Tablet,
+    label: 'Tablet'
+  },
+  mobile: {
+    width: '375px',
+    height: '812px',
+    icon: Smartphone,
+    label: 'Mobile'
+  }
+};
+
+export function LocalPreview({ projectId, className }: LocalPreviewProps) {
+  const [device, setDevice] = useState<DeviceType>('desktop');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [previewInfo, setPreviewInfo] = useState<PreviewInfo | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const { toast } = useToast();
+
+  // Check for existing preview on component mount
+  useEffect(() => {
+    checkPreviewStatus();
+  }, [projectId]);
+
+  const checkPreviewStatus = async () => {
+    try {
+      const response = await api.getLocalPreviewStatus(projectId);
+
+      if (response.preview && response.preview.status === 'ready') {
+        setPreviewInfo(response.preview);
+        setError(null);
+      } else {
+        setPreviewInfo(null);
+      }
+    } catch (error: any) {
+      console.error('Failed to check preview status:', error);
+      // Clear any stale preview info on error
+      setPreviewInfo(null);
+    }
+  };
+
+  const startPreview = async (forceRecreate = false) => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.createLocalPreview(projectId, forceRecreate);
+
+      setPreviewInfo(response.preview);
+      
+      toast({
+        title: response.preview.isExisting ? 'Preview Ready' : 'Preview Started',
+        description: response.preview.isExisting 
+          ? 'Using existing preview server'
+          : 'Local development server is running',
+      });
+
+    } catch (error: any) {
+      setError(error.message || 'Failed to start preview');
+      toast({
+        title: 'Preview Error',
+        description: error.message || 'Failed to start preview',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const stopPreview = async () => {
+    if (!previewInfo) return;
+
+    setIsLoading(true);
+    try {
+      await api.request(`/local-preview/${projectId}`, {
+        method: 'DELETE',
+      });
+
+      setPreviewInfo(null);
+      toast({
+        title: 'Preview Stopped',
+        description: 'Local development server has been stopped',
+      });
+
+    } catch (error: any) {
+      toast({
+        title: 'Error',
+        description: 'Failed to stop preview',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const updatePreview = async () => {
+    if (!previewInfo) {
+      // If no preview exists, create one first
+      await startPreview();
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await api.updateLocalPreview(projectId);
+
+      // Refresh the iframe
+      if (iframeRef.current) {
+        iframeRef.current.src = iframeRef.current.src;
+      }
+
+      toast({
+        title: 'Preview Updated',
+        description: 'Latest files have been synced to preview',
+      });
+
+    } catch (error: any) {
+      // If update fails (404), try to create a new preview
+      if (error.message.includes('404') || error.message.includes('not found')) {
+        console.log('Preview not found, creating new one...');
+        await startPreview();
+        return;
+      }
+      
+      toast({
+        title: 'Update Error',
+        description: error.message || 'Failed to update preview',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const refreshPreview = () => {
+    if (iframeRef.current) {
+      iframeRef.current.src = iframeRef.current.src;
+    }
+  };
+
+  const toggleFullscreen = () => {
+    setIsFullscreen(!isFullscreen);
+  };
+
+  const getStatusColor = (status: PreviewStatus) => {
+    switch (status) {
+      case 'ready':
+        return 'bg-green-500';
+      case 'starting':
+        return 'bg-yellow-500';
+      case 'error':
+        return 'bg-red-500';
+      default:
+        return 'bg-gray-500';
+    }
+  };
+
+  const getStatusText = (status: PreviewStatus) => {
+    switch (status) {
+      case 'ready':
+        return 'Ready';
+      case 'starting':
+        return 'Starting';
+      case 'error':
+        return 'Error';
+      default:
+        return 'Stopped';
+    }
+  };
+
+  if (isFullscreen && previewInfo?.status === 'ready') {
+    return (
+      <div className="fixed inset-0 z-50 bg-black">
+        <div className="flex items-center justify-between p-4 bg-gray-900 text-white">
+          <div className="flex items-center gap-4">
+            <Badge variant="secondary">
+              Local Preview - {previewInfo.url}
+            </Badge>
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleFullscreen}
+            className="text-white hover:bg-gray-700"
+          >
+            <Maximize2 className="h-4 w-4" />
+            Exit Fullscreen
+          </Button>
+        </div>
+        <iframe
+          ref={iframeRef}
+          src={previewInfo.url}
+          className="w-full h-[calc(100vh-64px)] border-0"
+          title="Preview"
+        />
+      </div>
+    );
+  }
+
+  return (
+    <Card className={cn('h-full flex flex-col', className)}>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg">Local Preview</CardTitle>
+          <div className="flex items-center gap-2">
+            {previewInfo && (
+              <Badge 
+                variant="secondary" 
+                className={cn('text-white', getStatusColor(previewInfo.status))}
+              >
+                <div className="w-2 h-2 rounded-full bg-white mr-1" />
+                {getStatusText(previewInfo.status)}
+              </Badge>
+            )}
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            {previewInfo?.status === 'ready' ? (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={stopPreview}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Square className="h-4 w-4" />
+                  )}
+                  Stop
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={updatePreview}
+                  disabled={isLoading}
+                >
+                  {isLoading ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="h-4 w-4" />
+                  )}
+                  Update
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={refreshPreview}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                  Refresh
+                </Button>
+              </>
+            ) : (
+              <Button
+                onClick={() => startPreview()}
+                disabled={isLoading}
+                size="sm"
+              >
+                {isLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                {previewInfo?.status === 'error' ? 'Restart' : 'Start'} Preview
+              </Button>
+            )}
+
+            {previewInfo?.status === 'error' && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => startPreview(true)}
+                disabled={isLoading}
+              >
+                <RotateCcw className="h-4 w-4" />
+                Force Recreate
+              </Button>
+            )}
+          </div>
+
+          {previewInfo?.status === 'ready' && (
+            <div className="flex items-center gap-1">
+              {/* Device switching */}
+              {Object.entries(deviceConfigs).map(([key, config]) => {
+                const Icon = config.icon;
+                return (
+                  <Button
+                    key={key}
+                    variant={device === key ? 'default' : 'ghost'}
+                    size="sm"
+                    onClick={() => setDevice(key as DeviceType)}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </Button>
+                );
+              })}
+              
+              <div className="w-px h-6 bg-border mx-1" />
+              
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={toggleFullscreen}
+              >
+                <Maximize2 className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+        </div>
+      </CardHeader>
+
+      <CardContent className="flex-1 p-0">
+        {error && (
+          <div className="p-6 text-center">
+            <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-red-900 mb-2">Preview Error</h3>
+            <p className="text-red-600 mb-4">{error}</p>
+            <Button onClick={() => startPreview(true)} variant="outline">
+              <RotateCcw className="h-4 w-4 mr-2" />
+              Try Again
+            </Button>
+          </div>
+        )}
+
+        {isLoading && !previewInfo && (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Starting local development server...</p>
+            </div>
+          </div>
+        )}
+
+        {!previewInfo && !isLoading && !error && (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center">
+              <Monitor className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-medium mb-2">No Preview Running</h3>
+              <p className="text-muted-foreground mb-4">
+                Start a local development server to preview your application
+              </p>
+              <Button onClick={() => startPreview()}>
+                <Play className="h-4 w-4 mr-2" />
+                Start Preview
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {previewInfo?.status === 'starting' && (
+          <div className="flex-1 flex items-center justify-center p-8">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+              <p className="text-muted-foreground">Development server is starting...</p>
+            </div>
+          </div>
+        )}
+
+        {previewInfo?.status === 'ready' && (
+          <div className="flex-1 bg-gray-100 flex items-center justify-center p-4">
+            <div 
+              className={cn(
+                'bg-white rounded-lg shadow-lg overflow-hidden transition-all duration-300',
+                device === 'desktop' && 'w-full h-full',
+                device === 'tablet' && 'w-[768px] h-[600px]',
+                device === 'mobile' && 'w-[375px] h-[600px]'
+              )}
+            >
+              <iframe
+                ref={iframeRef}
+                src={previewInfo.url}
+                className="w-full h-full border-0"
+                title="Local Preview"
+                sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-modals"
+              />
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}

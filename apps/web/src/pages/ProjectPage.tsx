@@ -1,42 +1,35 @@
 import { useParams } from 'react-router-dom';
 import { useState, useEffect } from 'react';
-import { Button } from '@/components/ui/button';
 import { DeploymentModal } from '@/components/deployment/DeploymentModal';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import MonacoEditor from '@monaco-editor/react';
-import { useTheme } from '@/components/theme-provider';
 import { ChatInterface } from '@/components/chat/ChatInterface';
-import { FileExplorer } from '@/components/file-explorer/FileExplorer';
-import { PreviewPane } from '@/components/preview/PreviewPane';
+import { EnhancedPreviewPane } from '@/components/preview/EnhancedPreviewPane';
+import { VSCodeIntegration } from '@/components/ide/VSCodeIntegration';
 import { useFileStore } from '@/stores/fileStore';
+import { useDevModeStore } from '@/stores/devModeStore';
 import type { GeneratedFile } from '@ultracode/shared';
 import { supabase } from '@/lib/supabase';
 import {
-  Play,
-  Download,
-  Share2,
-  Settings,
-  GitBranch,
-  Maximize2,
-  Smartphone,
-  Tablet,
+  Code2,
+  MessageSquare,
   Monitor,
-  Globe,
 } from 'lucide-react';
 
 export default function ProjectPage() {
   const { id } = useParams();
-  const { theme } = useTheme();
-  const { files, currentFile, applyGeneratedFiles } = useFileStore();
-  const [selectedTab, setSelectedTab] = useState('code');
+  const { applyGeneratedFiles } = useFileStore();
+  const { isDevMode } = useDevModeStore();
+  const [selectedTab, setSelectedTab] = useState('chat');
   const [projectName, setProjectName] = useState('Loading...');
   const [showDeployModal, setShowDeployModal] = useState(false);
   const [deploymentUrl, setDeploymentUrl] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Load project details
+    // Load project details only if we don't have the project name yet
     const loadProject = async () => {
-      if (!id) return;
+      if (!id || projectName !== 'Loading...') return;
+      setIsLoading(true);
       try {
         const { data } = await supabase
           .from('projects')
@@ -50,18 +43,22 @@ export default function ProjectPage() {
         }
       } catch (error) {
         console.error('Failed to load project:', error);
+      } finally {
+        setIsLoading(false);
       }
     };
     loadProject();
-  }, [id]);
+  }, [id, projectName]);
 
   useEffect(() => {
     // Handle generated files from AI
     const handleFilesGenerated = async (event: CustomEvent<{ projectId: string; files: GeneratedFile[] }>) => {
       if (event.detail.projectId === id) {
         await applyGeneratedFiles(id!, event.detail.files);
-        // Switch to code tab to show the generated files
-        setSelectedTab('code');
+        // Switch to code tab to show the generated files (only if dev mode is enabled)
+        if (isDevMode) {
+          setSelectedTab('code');
+        }
       }
     };
 
@@ -69,158 +66,92 @@ export default function ProjectPage() {
     return () => {
       window.removeEventListener('files-generated', handleFilesGenerated as any);
     };
-  }, [id, applyGeneratedFiles]);
+  }, [id, applyGeneratedFiles, isDevMode]);
 
-
-  const currentFileContent = currentFile && files[currentFile] 
-    ? files[currentFile].content 
-    : '// Select a file to view its content';
-
-
-  const getFileLanguage = (path: string) => {
-    const ext = path.split('.').pop();
-    switch (ext) {
-      case 'ts':
-      case 'tsx':
-        return 'typescript';
-      case 'js':
-      case 'jsx':
-        return 'javascript';
-      case 'css':
-        return 'css';
-      case 'json':
-        return 'json';
-      case 'md':
-        return 'markdown';
-      default:
-        return 'plaintext';
+  useEffect(() => {
+    // Switch to chat tab if dev mode is disabled and currently on code tab
+    if (!isDevMode && selectedTab === 'code') {
+      setSelectedTab('chat');
     }
-  };
+  }, [isDevMode, selectedTab]);
 
-  return (
-    <div className="h-[calc(100vh-8rem)] flex flex-col">
-      {/* Project Header */}
-      <div className="flex items-center justify-between p-4 border-b">
-        <div>
-          <h1 className="text-xl font-semibold">{projectName}</h1>
-          <p className="text-sm text-muted-foreground">Project ID: {id}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon">
-            <GitBranch className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon">
-            <Share2 className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon">
-            <Download className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="icon">
-            <Settings className="h-4 w-4" />
-          </Button>
-          {deploymentUrl && (
-            <Button
-              variant="outline"
-              onClick={() => window.open(deploymentUrl, '_blank')}
-            >
-              <Globe className="mr-2 h-4 w-4" />
-              View Live
-            </Button>
-          )}
-          <Button onClick={() => setShowDeployModal(true)}>
-            <Play className="mr-2 h-4 w-4" />
-            Deploy
-          </Button>
+
+
+  if (isLoading) {
+    return (
+      <div className="h-[calc(100vh-8rem)] flex items-center justify-center">
+        <div className="text-center animate-pulse">
+          <div className="w-8 h-8 bg-primary rounded-full animate-pulse mx-auto mb-4"></div>
+          <p className="text-muted-foreground">Loading project...</p>
         </div>
       </div>
+    );
+  }
 
-      {/* Main Content */}
-      <div className="flex-1 flex">
-        {/* File Explorer */}
-        <div className="w-64 border-r bg-background">
-          <FileExplorer 
-            projectId={id!} 
-            onFileSelect={() => setSelectedTab('code')}
-          />
-        </div>
-
-        {/* Editor Panel */}
-        <div className="flex-1 flex flex-col">
-          <Tabs value={selectedTab} onValueChange={setSelectedTab} className="flex-1 flex flex-col">
-            <TabsList className="w-full justify-start rounded-none border-b h-10">
-              <TabsTrigger value="code">Code</TabsTrigger>
-              <TabsTrigger value="chat">AI Chat</TabsTrigger>
-              <TabsTrigger value="terminal">Terminal</TabsTrigger>
+  return (
+    <div className="h-[calc(100vh-3rem)] flex flex-col bg-background animate-fade-in">
+      {/* Main Content - Full Height */}
+      <div className="flex h-full overflow-hidden">
+        {/* Unified Editor Panel */}
+        <div className="w-1/2 flex flex-col h-full overflow-hidden">
+          <Tabs value={selectedTab} onValueChange={setSelectedTab} className="h-full flex flex-col">
+            <TabsList className="w-full justify-start rounded-none border-b border-border/50 h-12 bg-background/50 backdrop-blur-sm flex-shrink-0">
+              {isDevMode && (
+                <TabsTrigger 
+                  value="code" 
+                  className="flex items-center gap-2 px-4 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all duration-300"
+                >
+                  <Code2 className="h-4 w-4" />
+                  <span className="font-medium">VS Code IDE</span>
+                </TabsTrigger>
+              )}
+              <TabsTrigger 
+                value="chat" 
+                className="flex items-center gap-2 px-4 py-2 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground transition-all duration-300"
+              >
+                <MessageSquare className="h-4 w-4" />
+                <span className="font-medium">AI Assistant</span>
+                <div className="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+              </TabsTrigger>
             </TabsList>
-            <TabsContent value="code" className="flex-1 m-0">
-              <div className="h-full">
-                {currentFile && (
-                  <div className="h-10 border-b px-4 flex items-center bg-muted/50">
-                    <span className="text-sm">{currentFile}</span>
-                  </div>
-                )}
-                <MonacoEditor
-                  height={currentFile ? "calc(100% - 2.5rem)" : "100%"}
-                  language={currentFile ? getFileLanguage(currentFile) : 'typescript'}
-                  theme={theme === 'dark' ? 'vs-dark' : 'light'}
-                  value={currentFileContent}
-                  options={{
-                    minimap: { enabled: false },
-                    fontSize: 14,
-                    lineNumbers: 'on',
-                    roundedSelection: false,
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    readOnly: true,
-                  }}
-                />
-              </div>
-            </TabsContent>
-            <TabsContent value="chat" className="flex-1 m-0">
-              <ChatInterface projectId={id!} />
-            </TabsContent>
-            <TabsContent value="terminal" className="flex-1 p-4 m-0 bg-black text-white font-mono">
-              <div className="text-sm">
-                <div className="text-green-400">$ npm run dev</div>
-                <div className="mt-2">
-                  <div>VITE v5.0.10  ready in 425 ms</div>
-                  <div className="mt-1">➜  Local:   http://localhost:5173/</div>
-                  <div>➜  Network: use --host to expose</div>
-                  <div>➜  press h to show help</div>
+            
+            {isDevMode && (
+              <TabsContent value="code" className="flex-1 m-0 animate-fade-in overflow-hidden">
+                <div className="h-full border-r border-border/50">
+                  <VSCodeIntegration projectId={id!} />
                 </div>
+              </TabsContent>
+            )}
+            
+            <TabsContent value="chat" className="flex-1 m-0 animate-fade-in overflow-hidden">
+              <div className="h-full border-r border-border/50">
+                <ChatInterface projectId={id!} />
               </div>
             </TabsContent>
           </Tabs>
         </div>
 
-        {/* Preview Panel */}
-        <div className="w-1/2 border-l flex flex-col">
-          <div className="flex items-center justify-between p-2 border-b">
+        {/* Enhanced Preview Panel */}
+        <div className="w-1/2 flex flex-col h-full overflow-hidden">
+          <div className="h-12 bg-background/50 backdrop-blur-sm border-b border-border/50 flex items-center justify-between px-4 flex-shrink-0">
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" title="Desktop view">
-                <Monitor className="h-4 w-4 mr-1" />
-                Desktop
-              </Button>
-              <Button variant="ghost" size="sm" title="Tablet view">
-                <Tablet className="h-4 w-4 mr-1" />
-                Tablet
-              </Button>
-              <Button variant="ghost" size="sm" title="Mobile view">
-                <Smartphone className="h-4 w-4 mr-1" />
-                Mobile
-              </Button>
+              <Monitor className="h-4 w-4 text-primary" />
+              <span className="font-medium text-foreground">Live Preview</span>
             </div>
-            <Button variant="ghost" size="icon">
-              <Maximize2 className="h-4 w-4" />
-            </Button>
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
+                <div className="w-2 h-2 bg-accent rounded-full animate-pulse"></div>
+                <span className="text-xs text-muted-foreground">Live</span>
+              </div>
+            </div>
           </div>
-          <div className="flex-1">
-            <PreviewPane projectId={id!} />
+          <div className="flex-1 animate-fade-in delay-100 overflow-hidden">
+            <EnhancedPreviewPane projectId={id!} />
           </div>
         </div>
       </div>
       
-      {/* Deployment Modal */}
+      {/* Enhanced Deployment Modal */}
       <DeploymentModal
         projectId={id!}
         projectName={projectName}

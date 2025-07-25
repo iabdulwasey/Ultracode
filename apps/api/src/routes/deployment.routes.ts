@@ -1,12 +1,12 @@
 import { Router } from 'express';
-import { authenticateRequest } from '../middleware/auth.middleware';
-import { deploymentService } from '../services/deployment.service';
-import { supabase } from '../lib/supabase';
+import { authenticate } from '../middleware/auth.js';
+import { deploymentService } from '../services/deployment.service.js';
+import { supabase } from '../config/supabase.js';
 
 const router = Router();
 
 // Deploy a project
-router.post('/deploy/:projectId', authenticateRequest, async (req, res) => {
+router.post('/deploy/:projectId', authenticate, async (req, res) => {
   try {
     const { projectId } = req.params;
     const { provider = 'netlify' } = req.body;
@@ -78,7 +78,7 @@ router.post('/deploy/:projectId', authenticateRequest, async (req, res) => {
 });
 
 // Get deployment history
-router.get('/deployments/:projectId', authenticateRequest, async (req, res) => {
+router.get('/deployments/:projectId', authenticate, async (req, res) => {
   try {
     const { projectId } = req.params;
     const userId = req.user?.id;
@@ -109,7 +109,7 @@ router.get('/deployments/:projectId', authenticateRequest, async (req, res) => {
 });
 
 // Get deployment status
-router.get('/deployment/:deploymentId/status', authenticateRequest, async (req, res) => {
+router.get('/deployment/:deploymentId/status', authenticate, async (req, res) => {
   try {
     const { deploymentId } = req.params;
     

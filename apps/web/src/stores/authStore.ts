@@ -109,7 +109,11 @@ export const useAuthStore = create<AuthState>()(
       },
 
       checkAuth: async () => {
-        set({ isLoading: true });
+        const currentState = get();
+        // Don't set loading if we already have a user (avoid unnecessary re-renders)
+        if (!currentState.user) {
+          set({ isLoading: true });
+        }
         
         const { data: { session } } = await supabase.auth.getSession();
         
@@ -179,9 +183,20 @@ export const useAuthStore = create<AuthState>()(
 
 // Set up auth state listener
 supabase.auth.onAuthStateChange((event, session) => {
+  const currentState = useAuthStore.getState();
+  
   if (event === 'SIGNED_IN' && session) {
-    useAuthStore.getState().checkAuth();
+    // Only call checkAuth if we don't already have user data
+    if (!currentState.user || currentState.user.id !== session.user.id) {
+      useAuthStore.getState().checkAuth();
+    }
   } else if (event === 'SIGNED_OUT') {
     useAuthStore.setState({ user: null, isAuthenticated: false });
+  } else if (event === 'TOKEN_REFRESHED' && session) {
+    // Don't call checkAuth on token refresh, just update the auth state silently
+    if (currentState.user && currentState.user.id === session.user.id) {
+      // Keep existing user data, just mark as authenticated
+      useAuthStore.setState({ isAuthenticated: true });
+    }
   }
 });

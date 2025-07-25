@@ -10,7 +10,7 @@ interface MessageListProps {
 
 export function MessageList({ messages, streamingMessage, generating }: MessageListProps) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full overflow-hidden">
       {messages.map((message) => (
         <MessageItem key={message.id} message={message} />
       ))}

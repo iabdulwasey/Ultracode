@@ -44,7 +44,7 @@ export const authRateLimiter = rateLimit({
   skipSuccessfulRequests: true,
 });
 
-// Specific rate limiter for code generation
+// Specific rate limiter for code generation (increased for development)
 export const generateRateLimiter = rateLimit({
   windowMs: 24 * 60 * 60 * 1000, // 24 hours
   max: (req: Request) => {
@@ -57,7 +57,7 @@ export const generateRateLimiter = rateLimit({
       case 'lite':
         return 30;
       default:
-        return 5;
+        return 100; // Increased for development/testing
     }
   },
   message: 'Daily generation limit reached. Please upgrade your plan.',

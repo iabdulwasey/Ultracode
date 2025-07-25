@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase';
+import { supabase } from '../config/supabase.js';
 import fetch from 'node-fetch';
 
 export interface DeploymentConfig {

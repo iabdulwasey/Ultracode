@@ -4,12 +4,12 @@ import Anthropic from '@anthropic-ai/sdk';
 import { query, getClient } from '../config/database.js';
 import { getRedis } from '../config/redis.js';
 import { AppError } from '../middleware/errorHandler.js';
-import { authenticateSupabase } from '../middleware/supabaseAuth.js';
+import { authenticate } from '../middleware/auth.js';
 import { generateRateLimiter } from '../middleware/rateLimiter.js';
 import { validateRequest } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { io } from '../server.js';
-import { FileSystemService } from '../services/fileSystem.service.js';
+import { localPreviewService } from '../services/localPreview.service.js';
 
 const router = Router();
 
@@ -27,8 +27,22 @@ const getAnthropic = () => {
   return anthropic;
 };
 
+// Debug middleware to log all requests
+router.use((req, res, next) => {
+  logger.info('Generate route request received', {
+    method: req.method,
+    url: req.url,
+    body: req.body,
+    headers: {
+      contentType: req.headers['content-type'],
+      authorization: !!req.headers.authorization
+    }
+  });
+  next();
+});
+
 // All routes require authentication
-router.use(authenticateSupabase);
+router.use(authenticate);
 
 // Validation schemas
 const generateSchema = z.object({
@@ -43,7 +57,7 @@ const generateSchema = z.object({
     options: z.object({
       model: z.enum(['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'gpt-4o', 'gpt-4-turbo']).default('claude-sonnet-4-20250514'),
       temperature: z.number().min(0).max(1).default(0.7),
-      maxTokens: z.number().min(100).max(8000).default(4000),
+      maxTokens: z.number().min(100).max(32000).default(32000),
     }).optional(),
   }),
 });
@@ -72,37 +86,145 @@ const deductCredits = async (userId: string, amount: number = 1) => {
 
 // Generate system prompt
 const getSystemPrompt = (context?: any) => {
-  return `You are Ultracode, an AI assistant that helps developers build web applications.
-You generate clean, modern, production-ready code following best practices.
+  return `You are Ultracode, an AI assistant that creates complete, standalone React applications.
 
-Technology stack:
-- Frontend: React with TypeScript
-- Styling: Tailwind CSS with shadcn/ui components
-- Backend: Node.js with Express
-- Database: PostgreSQL with Supabase
+IMPORTANT: Generate COMPLETE React applications that run independently with their own dependencies.
 
-Guidelines:
-1. Always use TypeScript with proper types
-2. Follow React best practices and hooks
-3. Use Tailwind CSS for styling with shadcn/ui components
-4. Write clean, maintainable code with proper error handling
-5. Include helpful comments explaining complex logic
-6. Ensure code is accessible and follows WCAG guidelines
+Technology Stack:
+- React 18+ with TypeScript
+- Vite for build tooling
+- Tailwind CSS for styling
+- Modern React patterns (hooks, functional components)
 
-When generating code, wrap file contents in markdown code blocks with the filename, like:
-\`\`\`typescript src/components/Button.tsx
-// Button component code here
+Application Requirements:
+1. Create a COMPLETE, STANDALONE React application
+2. Include ALL necessary files: package.json, vite.config.ts, tailwind.config.js, etc.
+3. Use ONLY standard React and popular NPM packages (no custom UI libraries)
+4. Make applications fully functional with proper state management
+5. Include proper TypeScript types and error handling
+6. Create responsive, accessible designs with Tailwind CSS
+7. CRITICAL: Generate ALL components referenced in imports - no missing files allowed
+8. CRITICAL: Ensure every import in App.tsx has a corresponding component file
+9. MANDATORY: If App.tsx imports components like Header, Hero, Services, About, Gallery, Testimonials, Contact, Footer - you MUST generate ALL of these component files
+10. VERIFICATION: After writing App.tsx, check every import statement and generate the corresponding component file
+11. TAILWIND CRITICAL: Always include tailwind.config.js with content paths or CSS won't work
+12. POSTCSS CRITICAL: Always include postcss.config.js or Tailwind processing will fail
+13. VITE CRITICAL: Always include vite.config.ts with server settings and SWC plugin or preview will fail
+
+File Structure (ALWAYS create these files):
+- package.json (with all dependencies)
+- vite.config.ts
+- tailwind.config.js
+- postcss.config.js
+- index.html
+- src/main.tsx (React entry point)
+- src/App.tsx (main application component)
+- src/index.css (Tailwind imports)
+- Additional components in src/components/
+- Pages in src/pages/ (if multi-page app)
+
+Package.json Dependencies:
+- Always include: react, react-dom, @types/react, @types/react-dom
+- Build tools: vite, @vitejs/plugin-react-swc, typescript
+- Styling: tailwindcss, autoprefixer, postcss
+- Add other packages as needed for functionality
+
+Tailwind Configuration (CRITICAL):
+- ALWAYS create tailwind.config.js with proper content paths
+- Use: content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"]
+- Use ES module format: export default { ... }
+
+Vite Configuration (CRITICAL):
+- ALWAYS create vite.config.ts with complete server settings
+- Use: @vitejs/plugin-react-swc (not @vitejs/plugin-react)
+- Include: server config with host, port, and hmr: false
+- Include: build config with target: 'es2020'
+
+Code Generation Format:
+For each file, use this EXACT format:
+\`\`\`json package.json
+{
+  "name": "app-name",
+  "private": true,
+  ...
+}
 \`\`\`
 
-${context?.currentFile ? `Current file: ${context.currentFile}` : ''}
-${context?.selectedCode ? `Selected code:\n${context.selectedCode}` : ''}`;
+\`\`\`javascript tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+\`\`\`
+
+\`\`\`javascript postcss.config.js
+export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+\`\`\`
+
+\`\`\`typescript vite.config.ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react-swc'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    host: '0.0.0.0',
+    port: 4000,
+    strictPort: false,
+    hmr: false
+  },
+  build: {
+    target: 'es2020',
+    sourcemap: false
+  }
+})
+\`\`\`
+
+\`\`\`typescript src/App.tsx
+import React from 'react';
+// Component code here
+\`\`\`
+
+Guidelines:
+1. Generate WORKING, COMPLETE applications that compile and run
+2. Use modern React patterns (useState, useEffect, custom hooks)
+3. Create beautiful, responsive UIs with Tailwind CSS
+4. Include proper error states and loading indicators
+5. Add interactive features and proper event handling
+6. Make applications production-ready with proper structure
+7. NEVER leave missing imports - if App.tsx imports a component, ALWAYS create that component file
+8. Double-check all imports and ensure every referenced file is generated
+9. EXAMPLE: If App.tsx has "import Header from './components/Header'", you MUST create "src/components/Header.tsx"
+10. EXAMPLE: If App.tsx imports 8 components, you MUST generate all 8 component files
+
+${context?.currentFile ? `Context - Current file: ${context.currentFile}` : ''}
+${context?.selectedCode ? `Context - Selected code:\n${context.selectedCode}` : ''}
+
+Remember: Create COMPLETE applications that users can immediately preview and interact with!`;
 };
 
 // Code generation endpoint
 router.post('/', generateRateLimiter, validateRequest(generateSchema), async (req, res, next) => {
   logger.info('Generate endpoint called', { 
     user: req.user,
-    hasAuthHeader: !!req.headers.authorization 
+    userSub: req.user?.sub,
+    hasAuthHeader: !!req.headers.authorization,
+    body: req.body,
+    bodyKeys: Object.keys(req.body || {}),
+    projectId: req.body?.projectId,
+    prompt: req.body?.prompt
   });
   
   const client = await getClient();
@@ -110,7 +232,7 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
   
   try {
     const { projectId, prompt, context, options = {} } = req.body;
-    const userId = req.user?.id;
+    const userId = req.user?.sub;
     
     if (!userId) {
       throw new AppError('User not authenticated', 401);
@@ -156,7 +278,7 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
         },
       ],
       temperature: options.temperature || 0.7,
-      max_tokens: options.maxTokens || 4000,
+      max_tokens: options.maxTokens || 32000,
       stream: true,
     });
 
@@ -186,6 +308,9 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
 
     // Parse generated code and extract files
     const files = extractFilesFromContent(fullContent);
+    
+    // Validate that all imported components have corresponding files
+    validateGeneratedFiles(files);
 
     // Save generation to database
     await client.query('BEGIN');
@@ -218,6 +343,16 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     }
 
     await client.query('COMMIT');
+
+    // Pre-build project for faster preview (run in background)
+    setImmediate(async () => {
+      try {
+        await (localPreviewService as any).prepareProject(projectId, files);
+        logger.info('Project prepared for preview', { projectId });
+      } catch (error) {
+        logger.warn('Failed to prepare project for preview', { projectId, error });
+      }
+    });
 
     // Deduct credits
     await deductCredits(userId);
@@ -295,26 +430,107 @@ router.post('/explain', validateRequest(z.object({
   }
 });
 
+// Helper function to validate that all imported components have corresponding files
+function validateGeneratedFiles(files: Array<{ path: string; content: string; type: string }>): void {
+  // Find App.tsx file
+  const appFile = files.find(f => f.path === 'src/App.tsx' || f.path === 'App.tsx');
+  if (!appFile) {
+    logger.warn('No App.tsx found in generated files');
+    return;
+  }
+
+  // Extract import statements from App.tsx
+  const importRegex = /import\s+\w+\s+from\s+['"]\.\/components\/(\w+)['"];/g;
+  const imports: string[] = [];
+  let match;
+  
+  while ((match = importRegex.exec(appFile.content)) !== null) {
+    imports.push(match[1]);
+  }
+
+  // Check if all imported components have corresponding files
+  const componentFiles = files.filter(f => 
+    f.path.startsWith('src/components/') || f.path.startsWith('components/')
+  );
+  
+  const missingComponents: string[] = [];
+  for (const componentName of imports) {
+    const componentFile = componentFiles.find(f => 
+      f.path.includes(`${componentName}.tsx`) || f.path.includes(`${componentName}.jsx`)
+    );
+    if (!componentFile) {
+      missingComponents.push(componentName);
+    }
+  }
+
+  if (missingComponents.length > 0) {
+    logger.error('Missing component files detected', {
+      imports,
+      componentFiles: componentFiles.map(f => f.path),
+      missingComponents
+    });
+    throw new AppError(
+      `Generated code is incomplete. Missing component files: ${missingComponents.join(', ')}. ` +
+      'Please regenerate with a more specific prompt.',
+      400
+    );
+  }
+
+  logger.info('Component validation passed', {
+    imports,
+    componentFiles: componentFiles.map(f => f.path)
+  });
+}
+
 // Helper function to extract files from generated content
 function extractFilesFromContent(content: string): Array<{ path: string; content: string; type: string }> {
   const files: Array<{ path: string; content: string; type: string }> = [];
   
-  // Simple regex to extract code blocks with file indicators
-  const codeBlockRegex = /```(\w+)(?:\s+(.+?))?\n([\s\S]*?)```/g;
+  // Updated regex to match our new markdown format: ```language filename
+  const codeBlockRegex = /```(?:(\w+)\s+)?([^\n\r]+)\n([\s\S]*?)```/g;
   let match;
 
   while ((match = codeBlockRegex.exec(content)) !== null) {
-    const [, language, filename, code] = match;
-    if (filename) {
+    const [, , filename, code] = match;
+    if (filename && filename.trim()) {
+      const cleanFilename = filename.trim();
       files.push({
-        path: filename,
+        path: cleanFilename,
         content: code.trim(),
-        type: language || 'text',
+        type: getFileType(cleanFilename),
       });
     }
   }
 
+  logger.info('Extracted files from content', { 
+    fileCount: files.length,
+    files: files.map(f => ({ path: f.path, type: f.type }))
+  });
+
   return files;
+}
+
+// Helper function to determine file type from extension
+function getFileType(filePath: string): string {
+  const ext = filePath.split('.').pop()?.toLowerCase();
+  switch (ext) {
+    case 'ts':
+    case 'tsx':
+      return 'typescript';
+    case 'js':
+    case 'jsx':
+      return 'javascript';
+    case 'json':
+      return 'json';
+    case 'css':
+      return 'css';
+    case 'html':
+      return 'html';
+    case 'md':
+      return 'markdown';
+    default:
+      return 'text';
+  }
 }
 
 export default router;

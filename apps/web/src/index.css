@@ -1,51 +1,69 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=JetBrains+Mono:wght@100..800&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 222.2 47.4% 11.2%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 222.2 84% 4.9%;
-    --radius: 0.5rem;
+    /* Modern Dark Theme Colors */
+    --background: 215 28% 7%;           /* #0f111a - Deep navy background */
+    --foreground: 213 31% 91%;          /* #e2e8f0 - Light gray text */
+    --card: 215 25% 9%;                 /* #151821 - Card background */
+    --card-foreground: 213 31% 91%;     /* #e2e8f0 - Card text */
+    --popover: 215 25% 9%;              /* #151821 - Popover background */
+    --popover-foreground: 213 31% 91%;  /* #e2e8f0 - Popover text */
+    --primary: 217 91% 60%;             /* #3b82f6 - Vibrant blue */
+    --primary-foreground: 0 0% 100%;    /* #ffffff - White text on primary */
+    --secondary: 215 25% 12%;           /* #1e2332 - Secondary background */
+    --secondary-foreground: 213 31% 91%; /* #e2e8f0 - Secondary text */
+    --muted: 215 25% 12%;               /* #1e2332 - Muted background */
+    --muted-foreground: 215 20% 65%;    /* #94a3b8 - Muted text */
+    --accent: 142 76% 36%;              /* #10b981 - Green accent */
+    --accent-foreground: 0 0% 100%;     /* #ffffff - White text on accent */
+    --destructive: 0 84% 60%;           /* #ef4444 - Red for destructive actions */
+    --destructive-foreground: 0 0% 100%; /* #ffffff - White text on destructive */
+    --border: 215 25% 15%;              /* #262c3e - Border color */
+    --input: 215 25% 12%;               /* #1e2332 - Input background */
+    --ring: 217 91% 60%;                /* #3b82f6 - Focus ring */
+    --radius: 0.75rem;                  /* Slightly larger radius for modern look */
+    
+    /* VS Code inspired editor colors */
+    --editor-background: 220 13% 18%;   /* #2d3748 - Editor background */
+    --editor-lighter: 220 13% 21%;      /* #374151 - Lighter editor areas */
+    --editor-border: 220 13% 28%;       /* #4b5563 - Editor borders */
+    --editor-active: 220 13% 31%;       /* #6b7280 - Active states */
+    
+    /* Code syntax colors */
+    --syntax-keyword: 218 100% 66%;     /* #569cd6 - Keywords */
+    --syntax-string: 31 81% 61%;        /* #ce9178 - Strings */
+    --syntax-comment: 114 31% 68%;      /* #6a9955 - Comments */
+    --syntax-function: 54 70% 68%;      /* #dcdcaa - Functions */
+    --syntax-variable: 199 98% 48%;     /* #9cdcfe - Variables */
+    --syntax-type: 164 95% 43%;         /* #4ec9b0 - Types */
   }
 
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 212.7 26.8% 83.9%;
+    /* Keep the same values for dark theme */
+    --background: 215 28% 7%;
+    --foreground: 213 31% 91%;
+    --card: 215 25% 9%;
+    --card-foreground: 213 31% 91%;
+    --popover: 215 25% 9%;
+    --popover-foreground: 213 31% 91%;
+    --primary: 217 91% 60%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 215 25% 12%;
+    --secondary-foreground: 213 31% 91%;
+    --muted: 215 25% 12%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 142 76% 36%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 25% 15%;
+    --input: 215 25% 12%;
+    --ring: 217 91% 60%;
   }
 }
 
@@ -53,7 +71,295 @@
   * {
     @apply border-border;
   }
+  
+  html {
+    @apply scroll-smooth;
+  }
+  
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans antialiased;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    @apply w-2 h-2;
+  }
+
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted rounded-full;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+
+  /* Selection */
+  ::selection {
+    @apply bg-primary/20 text-primary-foreground;
+  }
+
+  /* Focus styles */
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  /* Gradient backgrounds */
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--accent)) 100%);
+  }
+  
+  .gradient-card {
+    background: linear-gradient(135deg, hsl(var(--card)) 0%, hsl(var(--secondary)) 100%);
+  }
+  
+  /* Glass morphism effect */
+  .glass {
+    @apply bg-card/50 backdrop-blur-md border border-border/50;
+  }
+  
+  /* Animated gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary to-accent bg-clip-text text-transparent;
+  }
+  
+  /* Gradient circle for logo */
+  .gradient-circle {
+    @apply bg-gradient-to-r from-primary to-accent;
+  }
+  
+  /* Subtle glow effects */
+  .glow-primary {
+    box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+  }
+  
+  .glow-accent {
+    box-shadow: 0 0 20px hsl(var(--accent) / 0.3);
+  }
+  
+  /* Modern shadows */
+  .shadow-modern {
+    box-shadow: 
+      0 1px 2px hsl(var(--foreground) / 0.1),
+      0 1px 3px hsl(var(--foreground) / 0.1);
+  }
+  
+  .shadow-modern-lg {
+    box-shadow: 
+      0 4px 6px hsl(var(--foreground) / 0.1),
+      0 10px 15px hsl(var(--foreground) / 0.1);
+  }
+  
+  /* Loading states */
+  .skeleton {
+    @apply bg-muted animate-pulse rounded;
+  }
+  
+  .shimmer {
+    background: linear-gradient(90deg, 
+      hsl(var(--muted)) 0%, 
+      hsl(var(--muted-foreground) / 0.1) 50%, 
+      hsl(var(--muted)) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+  
+  .loading-dots::after {
+    content: '';
+    animation: loadingDots 1.5s infinite;
+  }
+  
+  @keyframes loadingDots {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+    100% { content: ''; }
+  }
+  
+  /* Code editor styles */
+  .editor-syntax {
+    @apply font-mono text-sm leading-relaxed;
+  }
+
+  .editor-syntax .keyword {
+    color: hsl(var(--syntax-keyword));
+  }
+
+  .editor-syntax .string {
+    color: hsl(var(--syntax-string));
+  }
+
+  .editor-syntax .comment {
+    color: hsl(var(--syntax-comment));
+  }
+
+  .editor-syntax .function {
+    color: hsl(var(--syntax-function));
+  }
+
+  .editor-syntax .variable {
+    color: hsl(var(--syntax-variable));
+  }
+
+  .editor-syntax .type {
+    color: hsl(var(--syntax-type));
+  }
+}
+
+@layer utilities {
+  /* Animation utilities */
+  .animate-fade-in {
+    animation: fadeIn 0.5s ease-in-out;
+  }
+  
+  .animate-slide-up {
+    animation: slideUp 0.5s ease-out;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.3s ease-out;
+  }
+  
+  .animate-glow {
+    animation: glow 2s ease-in-out infinite alternate;
+  }
+  
+  .animate-bounce-subtle {
+    animation: bounceSubtle 2s ease-in-out infinite;
+  }
+  
+  .animate-float {
+    animation: float 3s ease-in-out infinite;
+  }
+  
+  .animate-shimmer {
+    animation: shimmer 2s linear infinite;
+  }
+  
+  .animate-spin-slow {
+    animation: spin 3s linear infinite;
+  }
+  
+  .animate-wiggle {
+    animation: wiggle 1s ease-in-out;
+  }
+  
+  .animate-gradient-pulse {
+    animation: gradientPulse 3s ease-in-out infinite;
+  }
+  
+  /* Keyframes */
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  
+  @keyframes slideUp {
+    from { 
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to { 
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes scaleIn {
+    from { 
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to { 
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  @keyframes glow {
+    from { 
+      box-shadow: 0 0 20px hsl(var(--primary) / 0.3);
+    }
+    to { 
+      box-shadow: 0 0 30px hsl(var(--primary) / 0.6);
+    }
+  }
+  
+  @keyframes bounceSubtle {
+    0%, 100% { 
+      transform: translateY(0);
+    }
+    50% { 
+      transform: translateY(-5px);
+    }
+  }
+  
+  @keyframes float {
+    0%, 100% { 
+      transform: translateY(0px);
+    }
+    50% { 
+      transform: translateY(-10px);
+    }
+  }
+  
+  @keyframes shimmer {
+    0% {
+      background-position: -468px 0;
+    }
+    100% {
+      background-position: 468px 0;
+    }
+  }
+  
+  @keyframes wiggle {
+    0%, 7% { 
+      transform: rotateZ(0);
+    }
+    15% { 
+      transform: rotateZ(-15deg);
+    }
+    20% { 
+      transform: rotateZ(10deg);
+    }
+    25% { 
+      transform: rotateZ(-10deg);
+    }
+    30% { 
+      transform: rotateZ(6deg);
+    }
+    35% { 
+      transform: rotateZ(-4deg);
+    }
+    40%, 100% { 
+      transform: rotateZ(0);
+    }
+  }
+  
+  @keyframes gradientPulse {
+    0%, 100% { 
+      transform: scale(1);
+      opacity: 0.8;
+    }
+    50% { 
+      transform: scale(1.1);
+      opacity: 1;
+    }
+  }
+  
+  /* Text utilities */
+  .text-balance {
+    text-wrap: balance;
+  }
+  
+  .text-pretty {
+    text-wrap: pretty;
   }
 }
