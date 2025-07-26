@@ -324,6 +324,10 @@ Guidelines:
 8. Double-check all imports and ensure every referenced file is generated
 9. EXAMPLE: If App.tsx has "import Header from './components/Header'", you MUST create "src/components/Header.tsx"
 10. EXAMPLE: If App.tsx imports 8 components, you MUST generate all 8 component files
+11. JSX ESCAPING: When using data URLs in className, properly escape quotes
+12. CORRECT: className="bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22...')]"
+13. INCORRECT: className="bg-[url('data:image/svg+xml,%3Csvg width="60" height="60"...')]" 
+14. ALWAYS: URL-encode quotes (%22) and spaces (%20) in data URLs to prevent JSX parsing errors
 
 ${context?.currentFile ? `Context - Current file: ${context.currentFile}` : ''}
 ${context?.selectedCode ? `Context - Selected code:\n${context.selectedCode}` : ''}
