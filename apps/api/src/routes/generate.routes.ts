@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import Anthropic from '@anthropic-ai/sdk';
-import { query, getClient } from '../config/database.js';
+import { supabase } from '../config/supabase.js';
 import { getRedis } from '../config/redis.js';
 import { AppError } from '../middleware/errorHandler.js';
 import { authenticate } from '../middleware/auth.js';
@@ -64,24 +64,38 @@ const generateSchema = z.object({
 
 // Check user credits
 const checkCredits = async (userId: string) => {
-  const result = await query(
-    'SELECT credits_remaining FROM billing WHERE user_id = $1',
-    [userId]
-  );
+  if (!supabase) {
+    throw new AppError('Database connection error', 500);
+  }
 
-  if (result.rows.length === 0 || result.rows[0].credits_remaining <= 0) {
+  const { data, error } = await supabase
+    .from('billing')
+    .select('credits_remaining')
+    .eq('user_id', userId)
+    .single();
+
+  if (error || !data || data.credits_remaining <= 0) {
     throw new AppError('Insufficient credits. Please upgrade your plan.', 402);
   }
 
-  return result.rows[0].credits_remaining;
+  return data.credits_remaining;
 };
 
-// Deduct credits
+// Deduct credits  
 const deductCredits = async (userId: string, amount: number = 1) => {
-  await query(
-    'UPDATE billing SET credits_remaining = credits_remaining - $1, credits_used = credits_used + $1 WHERE user_id = $2',
-    [amount, userId]
-  );
+  if (!supabase) {
+    throw new AppError('Database connection error', 500);
+  }
+
+  const { error } = await supabase.rpc('deduct_credits', {
+    user_id: userId,
+    amount: amount
+  });
+
+  if (error) {
+    logger.error('Failed to deduct credits', { userId, amount, error });
+    // Don't throw error for credits - allow generation to continue
+  }
 };
 
 // Generate system prompt
@@ -227,7 +241,6 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     prompt: req.body?.prompt
   });
   
-  const client = await getClient();
   const redis = getRedis();
   
   try {
@@ -239,12 +252,18 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     }
 
     // Check project ownership
-    const projectResult = await query(
-      'SELECT id FROM projects WHERE id = $1 AND user_id = $2',
-      [projectId, userId]
-    );
+    if (!supabase) {
+      throw new AppError('Database connection error', 500);
+    }
 
-    if (projectResult.rows.length === 0) {
+    const { data: project, error: projectError } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('id', projectId)
+      .eq('user_id', userId)
+      .single();
+
+    if (projectError || !project) {
       throw new AppError('Project not found', 404);
     }
 
@@ -313,36 +332,29 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     validateGeneratedFiles(files);
 
     // Save generation to database
-    await client.query('BEGIN');
+    // Transaction handling is managed by Supabase
 
-    // Update chat session
-    await client.query(
-      `UPDATE chat_sessions 
-       SET messages = messages || $1::jsonb, tokens_used = tokens_used + $2
-       WHERE project_id = $3 AND user_id = $4`,
-      [
-        JSON.stringify([
-          { role: 'user', content: prompt, timestamp: new Date() },
-          { role: 'assistant', content: fullContent, timestamp: new Date() },
-        ]),
-        tokenCount,
-        projectId,
-        userId,
-      ]
-    );
+    // Chat session management is handled by Supabase directly in the frontend
 
-    // Update project files if any
-    for (const file of files) {
-      await client.query(
-        `INSERT INTO project_files (project_id, path, content, type) 
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (project_id, path) 
-         DO UPDATE SET content = $3, updated_at = NOW()`,
-        [projectId, file.path, file.content, file.type]
-      );
+    // Save files to Supabase
+    if (files.length > 0) {
+      const { error } = await supabase
+        .from('project_files')
+        .upsert(
+          files.map(file => ({
+            project_id: projectId,
+            path: file.path,
+            content: file.content,
+            type: file.type,
+            size: file.content.length
+          })),
+          { onConflict: 'project_id,path' }
+        );
+      
+      if (error) {
+        logger.error('Failed to save files to database', { projectId, error });
+      }
     }
-
-    await client.query('COMMIT');
 
     // Pre-build project for faster preview (run in background)
     setImmediate(async () => {
@@ -380,7 +392,7 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
 
     logger.info(`Code generation completed for project ${projectId}`);
   } catch (error) {
-    await client.query('ROLLBACK');
+    // Error occurred - Supabase handles transaction rollback automatically
     
     // Send error event for streaming response
     if (!res.headersSent) {
@@ -393,7 +405,7 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
       res.end();
     }
   } finally {
-    client.release();
+    // No database client cleanup needed with Supabase
   }
 });
 

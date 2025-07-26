@@ -89,15 +89,13 @@ class LocalPreviewService {
    */
   async createPreview(projectId: string, userId: string): Promise<LocalPreviewInfo> {
     try {
-      // Check if preview already exists and is running
+      // Always stop existing server to ensure proper port allocation and config regeneration
       const existing = this.activeServers.get(projectId);
-      if (existing && existing.status === 'ready') {
-        logger.info('Returning existing preview', { projectId, port: existing.port });
-        return existing;
-      }
-
-      // Stop existing server if in error state
-      if (existing && existing.status === 'error') {
+      if (existing) {
+        logger.info('Stopping existing preview to recreate with proper configuration', { 
+          projectId, 
+          oldPort: existing.port 
+        });
         await this.stopPreview(projectId);
       }
 
@@ -143,7 +141,9 @@ class LocalPreviewService {
       await this.saveState(); // Save state immediately
 
       // Always setup project files to ensure latest configuration
-      await this.setupProjectFiles(projectPath, files);
+      logger.info('About to setup project files', { projectPath, port, fileCount: files.length });
+      await this.setupProjectFiles(projectPath, files, port);
+      logger.info('Finished setting up project files', { projectPath, port });
       
       // Only install dependencies if node_modules doesn't exist
       const nodeModulesExists = await this.checkNodeModulesExists(projectPath);
@@ -253,9 +253,9 @@ class LocalPreviewService {
       throw new Error('Failed to fetch updated files');
     }
 
-    // Update files on disk
+    // Update files on disk  
     const projectPath = path.join(this.tempDir, projectId);
-    await this.setupProjectFiles(projectPath, files);
+    await this.setupProjectFiles(projectPath, files, existing.port);
 
     // Vite will automatically hot reload the changes
     logger.info('Project files updated, Vite will hot reload', { projectId });
@@ -285,7 +285,7 @@ class LocalPreviewService {
       
       logger.info('Preparing project for preview', { projectId });
       
-      // Setup project files
+      // Setup project files (use default port for background preparation)
       await this.setupProjectFiles(projectPath, files);
       
       // Install dependencies
@@ -321,7 +321,7 @@ class LocalPreviewService {
   /**
    * Setup project files on disk
    */
-  private async setupProjectFiles(projectPath: string, files: ProjectFile[]): Promise<void> {
+  private async setupProjectFiles(projectPath: string, files: ProjectFile[], port?: number): Promise<void> {
     // Clean and recreate project directory
     await fs.rm(projectPath, { recursive: true, force: true });
     await fs.mkdir(projectPath, { recursive: true });
@@ -501,6 +501,9 @@ export default App;`;
     }
 
     // Create vite.config.ts with SWC plugin and completely disabled HMR
+    // Use the actual assigned port directly in config
+    const actualPort = port || 4000;
+    logger.info('Creating vite.config.ts', { projectPath, assignedPort: port, actualPort });
     const viteConfig = `import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react-swc'
 
@@ -508,7 +511,7 @@ export default defineConfig({
   plugins: [react()],
   server: {
     host: '0.0.0.0',
-    port: 4000,
+    port: ${actualPort},
     strictPort: false,
     hmr: false
   },
@@ -518,6 +521,7 @@ export default defineConfig({
   }
 })`;
 
+    logger.info('Writing vite.config.ts with port', { projectPath, actualPort });
     await fs.writeFile(path.join(projectPath, 'vite.config.ts'), viteConfig);
 
     // Create tailwind.config.js
@@ -636,6 +640,9 @@ export default {
         const output = data.toString();
         stdout += output;
         
+        // Log Vite output for debugging
+        logger.info('Vite output', { projectPath, port, output: output.trim() });
+        
         // Check if server is ready (look for local/network URLs)
         if ((output.includes('Local:') || output.includes('ready in')) && !serverReady) {
           serverReady = true;
@@ -651,7 +658,9 @@ export default {
       });
 
       viteProcess.stderr?.on('data', (data) => {
-        stderr += data.toString();
+        const error = data.toString();
+        stderr += error;
+        logger.error('Vite stderr', { projectPath, port, error: error.trim() });
       });
 
       viteProcess.on('error', (error) => {
@@ -753,10 +762,21 @@ export default {
   private async findAvailablePort(): Promise<number> {
     const net = await import('net');
     
+    // Get all currently used ports from active servers
+    const usedPorts = new Set(
+      Array.from(this.activeServers.values()).map(server => server.port)
+    );
+    
     return new Promise((resolve, reject) => {
       const server = net.createServer();
       
       const tryPort = (port: number) => {
+        // Skip port if already used by our service
+        if (usedPorts.has(port)) {
+          tryPort(port + 1);
+          return;
+        }
+        
         server.listen(port, () => {
           server.close(() => resolve(port));
         });

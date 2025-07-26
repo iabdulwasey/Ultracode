@@ -55,32 +55,18 @@ router.post('/', validateRequest(createPreviewSchema), async (req, res, next) =>
       throw new AppError('Project not found', 404);
     }
 
-    // Check for existing preview if not forcing recreation
-    if (!forceRecreate) {
-      const existingPreview = localPreviewService.getPreviewStatus(projectId);
-      if (existingPreview && existingPreview.status === 'ready') {
-        logger.info('Returning existing local preview', { 
-          projectId, 
-          port: existingPreview.port 
-        });
-
-        return res.json({
-          success: true,
-          preview: {
-            projectId: existingPreview.projectId,
-            url: existingPreview.url,
-            port: existingPreview.port,
-            status: existingPreview.status,
-            isExisting: true,
-          },
-        });
-      }
-    }
-
-    // Stop existing preview if forcing recreation
-    if (forceRecreate) {
+    // Always recreate preview to ensure proper port allocation and config generation
+    // Stop existing preview if it exists
+    const existingPreview = localPreviewService.getPreviewStatus(projectId);
+    if (existingPreview) {
+      logger.info('Stopping existing preview to recreate with proper port', { 
+        projectId, 
+        oldPort: existingPreview.port 
+      });
       await localPreviewService.stopPreview(projectId);
     }
+
+    // Preview will always be recreated to ensure proper configuration
 
     // Create new local preview
     logger.info('Creating new preview', { projectId, userId });

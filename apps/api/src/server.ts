@@ -102,8 +102,8 @@ async function startServer() {
     // Initialize Supabase client
     initializeSupabase();
     
-    // Connect to database
-    await connectDatabase();
+    // Connect to database (disabled - using Supabase instead)
+    // await connectDatabase();
     
     // Initialize Redis
     await initializeRedis();

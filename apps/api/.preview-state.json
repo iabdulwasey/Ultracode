@@ -1,57 +1,21 @@
 {
   "activeServers": {
-    "597362be-cef6-42a5-9e6c-f54f49ded21e": {
-      "projectId": "597362be-cef6-42a5-9e6c-f54f49ded21e",
+    "03439ff1-5239-4227-8a9d-6050adab00c3": {
+      "projectId": "03439ff1-5239-4227-8a9d-6050adab00c3",
       "port": 4000,
       "url": "http://localhost:4000",
-      "status": "error"
-    },
-    "d5501457-ac57-424c-8411-704307f222b4": {
-      "projectId": "d5501457-ac57-424c-8411-704307f222b4",
-      "port": 4000,
-      "url": "http://localhost:4000",
-      "status": "error"
-    },
-    "1265d436-c27a-4b02-8a70-242d3b18a4dd": {
-      "projectId": "1265d436-c27a-4b02-8a70-242d3b18a4dd",
-      "port": 4000,
-      "url": "http://localhost:4000",
-      "status": "error"
-    },
-    "94d2719e-7649-481b-aa0f-5abf4ec201ce": {
-      "projectId": "94d2719e-7649-481b-aa0f-5abf4ec201ce",
-      "port": 4000,
-      "url": "http://localhost:4000",
-      "status": "error"
-    },
-    "d9bc30f7-f197-44cb-9b49-6f4e8cecc386": {
-      "projectId": "d9bc30f7-f197-44cb-9b49-6f4e8cecc386",
-      "port": 4000,
-      "url": "http://localhost:4000",
-      "status": "error"
-    },
-    "440b9935-b23d-45f4-985d-0c4db79e4ab0": {
-      "projectId": "440b9935-b23d-45f4-985d-0c4db79e4ab0",
-      "port": 4000,
-      "url": "http://localhost:4000",
-      "status": "error"
+      "status": "ready"
     },
     "4fd43243-1824-486e-a81e-d39e59d3be18": {
       "projectId": "4fd43243-1824-486e-a81e-d39e59d3be18",
-      "port": 4000,
-      "url": "http://localhost:4000",
+      "port": 4001,
+      "url": "http://localhost:4001",
       "status": "ready"
     },
     "30ddd74f-f029-4319-a8b7-15044c840d14": {
       "projectId": "30ddd74f-f029-4319-a8b7-15044c840d14",
-      "port": 4000,
-      "url": "http://localhost:4000",
-      "status": "ready"
-    },
-    "77d78225-e57e-4fef-af95-c2e3a3018201": {
-      "projectId": "77d78225-e57e-4fef-af95-c2e3a3018201",
-      "port": 4000,
-      "url": "http://localhost:4000",
+      "port": 4002,
+      "url": "http://localhost:4002",
       "status": "starting"
     }
   }
