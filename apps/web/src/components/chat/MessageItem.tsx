@@ -3,6 +3,7 @@ import { User, Bot, Copy, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { CodeBlock } from './CodeBlock';
+import { GenerationTimeline } from './GenerationTimeline';
 import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -21,6 +22,21 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
+
+  // Detect if this is an AI code generation response
+  const isGeneration = !isUser && (
+    message.content.includes('```typescript') || 
+    message.content.includes('```tsx') || 
+    message.content.includes('```javascript') || 
+    message.content.includes('```jsx') ||
+    message.content.includes('```json') ||
+    message.content.includes('package.json') ||
+    message.content.includes('vite.config') ||
+    message.content.includes('tailwind.config') ||
+    message.content.includes('src/App.tsx') ||
+    message.content.includes('src/components/') ||
+    (message.content.includes('```') && message.content.length > 1000) // Long responses with code blocks
+  );
 
   return (
     <div
@@ -45,7 +61,11 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
       >
         {isUser ? (
           <p className="whitespace-pre-wrap break-words overflow-wrap-anywhere">{message.content}</p>
+        ) : isGeneration ? (
+          // Show visual timeline for code generation
+          <GenerationTimeline content={message.content} isStreaming={isStreaming} />
         ) : (
+          // Show regular markdown for other responses
           <div className="prose prose-sm dark:prose-invert max-w-none overflow-hidden break-words">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
@@ -102,7 +122,7 @@ export function MessageItem({ message, isStreaming }: MessageItemProps) {
           </div>
         )}
         
-        {!isUser && !isStreaming && (
+        {!isUser && !isStreaming && !isGeneration && (
           <Button
             variant="ghost"
             size="icon"
