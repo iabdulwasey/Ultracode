@@ -61,7 +61,7 @@ export default function RegisterPage() {
         title: 'Account created!',
         description: 'Welcome to Ultracode. Check your email to verify your account.',
       });
-      navigate('/dashboard');
+      navigate('/workspace');
     } catch (error: any) {
       toast({
         title: 'Registration failed',
@@ -79,7 +79,7 @@ export default function RegisterPage() {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'github',
         options: {
-          redirectTo: `${window.location.origin}/dashboard`,
+          redirectTo: `${window.location.origin}/workspace`,
         },
       });
       

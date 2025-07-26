@@ -66,10 +66,10 @@ export default function Header() {
   return (
     <nav className="fixed top-0 left-0 right-0 z-50 h-12 bg-card border-b border-border flex items-center justify-between px-4 backdrop-blur-md">
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2">
+        <Link to="/workspace" className="flex items-center space-x-2 hover:opacity-80 transition-opacity">
           <div className="w-3 h-3 gradient-circle rounded-full animate-gradient-pulse"></div>
           <span className="font-semibold text-foreground gradient-text">Ultracode</span>
-        </div>
+        </Link>
         
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -81,6 +81,9 @@ export default function Header() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent className="bg-popover border-border text-popover-foreground">
+            <DropdownMenuItem asChild className="hover:bg-secondary focus:bg-secondary">
+              <Link to="/workspace">AI Workspace</Link>
+            </DropdownMenuItem>
             <DropdownMenuItem asChild className="hover:bg-secondary focus:bg-secondary">
               <Link to="/dashboard">All Projects</Link>
             </DropdownMenuItem>

@@ -22,6 +22,18 @@
       "projectId": "77d78225-e57e-4fef-af95-c2e3a3018201",
       "port": 4003,
       "url": "http://localhost:4003",
+      "status": "ready"
+    },
+    "b4a4c733-af6c-48bc-91cd-73e1cf155be4": {
+      "projectId": "b4a4c733-af6c-48bc-91cd-73e1cf155be4",
+      "port": 4004,
+      "url": "http://localhost:4004",
+      "status": "ready"
+    },
+    "fceff3d8-bbb8-4d5b-8f53-3dc66ec0aff8": {
+      "projectId": "fceff3d8-bbb8-4d5b-8f53-3dc66ec0aff8",
+      "port": 4005,
+      "url": "http://localhost:4005",
       "status": "starting"
     }
   }

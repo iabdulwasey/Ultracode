@@ -8,6 +8,7 @@ import AuthLayout from '@/layouts/AuthLayout';
 import DashboardPage from '@/pages/DashboardPage';
 import ProjectPage from '@/pages/ProjectPage';
 import NewProjectPage from '@/pages/NewProjectPage';
+import WorkspacePage from '@/pages/WorkspacePage';
 import LoginPage from '@/pages/auth/LoginPage';
 import RegisterPage from '@/pages/auth/RegisterPage';
 import LandingPage from '@/pages/LandingPage';
@@ -23,6 +24,16 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   }
   
   return <>{children}</>;
+}
+
+function RootRedirect() {
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  
+  if (isAuthenticated) {
+    return <Navigate to="/workspace" replace />;
+  } else {
+    return <LandingPage />;
+  }
 }
 
 function App() {
@@ -49,8 +60,8 @@ function App() {
       <ThemeProvider defaultTheme="dark" storageKey="ultracode-theme">
         <BrowserRouter>
           <Routes>
-            {/* Public routes */}
-            <Route path="/" element={<LandingPage />} />
+            {/* Root route - redirects based on auth status */}
+            <Route path="/" element={<RootRedirect />} />
             
             {/* Auth routes */}
             <Route element={<AuthLayout />}>
@@ -66,6 +77,7 @@ function App() {
                 </ProtectedRoute>
               }
             >
+              <Route path="/workspace" element={<WorkspacePage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/new" element={<NewProjectPage />} />
               <Route path="/project/:id" element={<ProjectPage />} />
