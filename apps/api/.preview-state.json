@@ -4,36 +4,60 @@
       "projectId": "03439ff1-5239-4227-8a9d-6050adab00c3",
       "port": 4000,
       "url": "http://localhost:4000",
-      "status": "ready"
+      "status": "error"
     },
     "4fd43243-1824-486e-a81e-d39e59d3be18": {
       "projectId": "4fd43243-1824-486e-a81e-d39e59d3be18",
       "port": 4001,
       "url": "http://localhost:4001",
-      "status": "ready"
+      "status": "error"
     },
     "30ddd74f-f029-4319-a8b7-15044c840d14": {
       "projectId": "30ddd74f-f029-4319-a8b7-15044c840d14",
       "port": 4002,
       "url": "http://localhost:4002",
-      "status": "ready"
+      "status": "error"
     },
     "77d78225-e57e-4fef-af95-c2e3a3018201": {
       "projectId": "77d78225-e57e-4fef-af95-c2e3a3018201",
       "port": 4003,
       "url": "http://localhost:4003",
-      "status": "ready"
+      "status": "error"
     },
     "b4a4c733-af6c-48bc-91cd-73e1cf155be4": {
       "projectId": "b4a4c733-af6c-48bc-91cd-73e1cf155be4",
       "port": 4004,
       "url": "http://localhost:4004",
-      "status": "ready"
+      "status": "error"
     },
     "fceff3d8-bbb8-4d5b-8f53-3dc66ec0aff8": {
       "projectId": "fceff3d8-bbb8-4d5b-8f53-3dc66ec0aff8",
       "port": 4005,
       "url": "http://localhost:4005",
+      "status": "error"
+    },
+    "d150fc04-e7f1-4eb5-aca8-6332746b845b": {
+      "projectId": "d150fc04-e7f1-4eb5-aca8-6332746b845b",
+      "port": 4006,
+      "url": "http://localhost:4006",
+      "status": "error"
+    },
+    "96391065-43ed-48ee-83d3-eeabc6283d79": {
+      "projectId": "96391065-43ed-48ee-83d3-eeabc6283d79",
+      "port": 4007,
+      "url": "http://localhost:4007",
+      "status": "error"
+    },
+    "b7f9d6e0-8fb6-44e9-89a8-e1d45e9ef8a2": {
+      "projectId": "b7f9d6e0-8fb6-44e9-89a8-e1d45e9ef8a2",
+      "port": 4008,
+      "url": "http://localhost:4008",
+      "status": "error"
+    },
+    "40a4b0e9-ea8d-4135-8efa-cd6117227a39": {
+      "projectId": "40a4b0e9-ea8d-4135-8efa-cd6117227a39",
+      "port": 4009,
+      "url": "http://localhost:4009",
       "status": "starting"
     }
   }

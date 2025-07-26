@@ -68,12 +68,8 @@ export default function WorkspacePage() {
       </div>
 
       {/* Hero Section */}
-      <section className="relative py-32 px-6">
+      <section className="relative py-20 px-6">
         <div className="container mx-auto text-center animate-fade-in">
-          <div className="inline-flex items-center gap-2 bg-primary/10 border border-primary/20 rounded-full px-4 py-2 mb-8 animate-scale-in">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <span className="text-sm font-medium">Powered by Claude Sonnet 4</span>
-          </div>
           
           <h1 className="text-5xl md:text-7xl lg:text-8xl font-bold mb-8 animate-slide-up">
             <span className="gradient-text text-balance">
@@ -206,29 +202,6 @@ export default function WorkspacePage() {
             </div>
           </div>
 
-          {/* Features highlight */}
-          <div className="mt-20 animate-slide-up delay-600">
-            <div className="text-sm text-muted-foreground mb-8">
-              <div className="flex items-center justify-center gap-8 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-accent rounded-full"></div>
-                  <span>AI-powered code generation</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-primary rounded-full"></div>
-                  <span>Production-ready output</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-                  <span>One-click deployment</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span>Modern tech stack</span>
-                </div>
-              </div>
-            </div>
-          </div>
         </div>
       </section>
     </div>

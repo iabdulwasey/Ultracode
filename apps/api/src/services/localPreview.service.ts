@@ -334,15 +334,23 @@ class LocalPreviewService {
     
     if (!hasPackageJson) {
       // Create default React + Vite + TypeScript + Tailwind project structure
-      await this.createDefaultProject(projectPath, parsedFiles);
+      await this.createDefaultProject(projectPath, parsedFiles, port);
     } else {
-      // Write files as-is
+      // Write files with dynamic port replacement
       for (const file of parsedFiles) {
         const fullPath = path.join(projectPath, file.path);
         const dir = path.dirname(fullPath);
         
         await fs.mkdir(dir, { recursive: true });
-        await fs.writeFile(fullPath, file.content, 'utf-8');
+        
+        // Replace port in vite.config.ts if port is specified
+        let content = file.content;
+        if (port && file.path === 'vite.config.ts') {
+          content = content.replace(/port:\s*\d+/, `port: ${port}`);
+          logger.info('Updated Vite config port', { projectPath, port, filePath: file.path });
+        }
+        
+        await fs.writeFile(fullPath, content, 'utf-8');
       }
     }
 
@@ -355,7 +363,7 @@ class LocalPreviewService {
   /**
    * Create default project structure if no package.json exists
    */
-  private async createDefaultProject(projectPath: string, files: ProjectFile[]): Promise<void> {
+  private async createDefaultProject(projectPath: string, files: ProjectFile[], port?: number): Promise<void> {
     logger.info('Creating default project', { 
       projectPath, 
       fileCount: files.length,

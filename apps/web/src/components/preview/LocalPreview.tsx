@@ -10,7 +10,8 @@ import {
   Smartphone,
   Maximize2,
   AlertCircle,
-  Loader2
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
@@ -183,6 +184,33 @@ export function LocalPreview({ projectId, className }: LocalPreviewProps) {
     }
   };
 
+  const rebuildPreview = async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      // Force recreate the preview (same as starting from scratch)
+      const response = await api.createLocalPreview(projectId, true);
+      
+      setPreviewInfo(response.preview);
+      
+      toast({
+        title: 'Preview Rebuilt',
+        description: 'Project has been completely rebuilt and restarted',
+      });
+      
+    } catch (error: any) {
+      setError(error.message || 'Failed to rebuild preview');
+      toast({
+        title: 'Rebuild Error',
+        description: error.message || 'Failed to rebuild preview',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const toggleFullscreen = () => {
     setIsFullscreen(!isFullscreen);
   };
@@ -248,6 +276,19 @@ export function LocalPreview({ projectId, className }: LocalPreviewProps) {
         <CardHeader className="pb-3 flex-shrink-0">
           <div className="flex items-center justify-end">
             <div className="flex items-center gap-1">
+              {/* Rebuild button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={rebuildPreview}
+                disabled={isLoading}
+                title="Rebuild Preview"
+              >
+                <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+              </Button>
+              
+              <div className="w-px h-6 bg-border mx-1" />
+              
               {/* Device switching */}
               {Object.entries(deviceConfigs).map(([key, config]) => {
                 const Icon = config.icon;

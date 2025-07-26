@@ -18,21 +18,20 @@ interface GenerationTimelineProps {
 
 export function GenerationTimeline({ content, isStreaming }: GenerationTimelineProps) {
   const [steps, setSteps] = useState<GenerationStep[]>([]);
-  const [currentStep, setCurrentStep] = useState(0);
+  const [currentStepIndex, setCurrentStepIndex] = useState(-1);
 
-  // Parse the AI content and extract file creation activities
+  // Dynamically build timeline based on what AI is actually generating
   useEffect(() => {
-    const extractedSteps = parseContentForSteps(content);
-    setSteps(extractedSteps);
+    const detectedSteps = detectStepsFromContent(content);
+    setSteps(detectedSteps);
     
-    // Update progress based on content - this is where we move down the timeline as files are created
     if (!isStreaming) {
       // Mark all steps as completed when streaming ends
-      setCurrentStep(extractedSteps.length);
+      setCurrentStepIndex(-1); // No active step when done
     } else {
-      // Gradually show progress during streaming based on code blocks found
-      const completedSteps = countCompletedSteps(content);
-      setCurrentStep(Math.min(completedSteps, extractedSteps.length - 1));
+      // Find the current active step based on most recent activity
+      const activeIndex = findCurrentActiveStep(content, detectedSteps);
+      setCurrentStepIndex(activeIndex);
     }
   }, [content, isStreaming]);
 
@@ -61,9 +60,9 @@ export function GenerationTimeline({ content, isStreaming }: GenerationTimelineP
 
       <div className="space-y-3">
         {steps.map((step, index) => {
-          const isCompleted = index < currentStep;
-          const isActive = index === currentStep && isStreaming;
-          const isPending = index > currentStep;
+          const isCompleted = !isStreaming || index < currentStepIndex;
+          const isActive = isStreaming && index === currentStepIndex;
+          const isPending = isStreaming && index > currentStepIndex;
 
           return (
             <div key={step.id} className="flex items-start gap-3">
@@ -148,33 +147,34 @@ export function GenerationTimeline({ content, isStreaming }: GenerationTimelineP
   );
 }
 
-// Parse AI content to extract file generation steps based on actual code blocks
-function parseContentForSteps(content: string): GenerationStep[] {
+// Dynamically detect steps as AI generates files in real-time
+function detectStepsFromContent(content: string): GenerationStep[] {
   const steps: GenerationStep[] = [];
-  
-  // Always start with setup steps
-  steps.push({
-    id: 'setup',
-    title: 'Setting up project structure',
-    description: 'Creating package.json and configuration files',
-    status: 'pending',
-    icon: Package,
-    type: 'setup',
-  });
+  const addedSteps = new Set<string>();
 
-  // Look for specific file patterns in the content to create relevant steps
-  const filePatterns = [
-    { pattern: /```(?:json|javascript)?\s*package\.json/i, step: 'dependencies' },
-    { pattern: /```(?:typescript|ts)?\s*vite\.config/i, step: 'vite-config' },
-    { pattern: /```(?:javascript|js)?\s*tailwind\.config/i, step: 'tailwind-config' },
-    { pattern: /```(?:typescript|tsx)?\s*src\/App\.tsx/i, step: 'main-app' },
-    { pattern: /```(?:typescript|tsx)?\s*src\/components\/(\w+)\.tsx/gi, step: 'components' },
-    { pattern: /```(?:typescript|tsx)?\s*src\/pages\/(\w+)\.tsx/gi, step: 'pages' },
-  ];
+  // Helper function to add step if not already added
+  const addStep = (step: GenerationStep) => {
+    if (!addedSteps.has(step.id)) {
+      steps.push(step);
+      addedSteps.add(step.id);
+    }
+  };
 
-  // Check for configuration files
+  // Always start with setup if we have any code
+  if (content.includes('```')) {
+    addStep({
+      id: 'setup',
+      title: 'Setting up project structure',
+      description: 'Initializing React application with TypeScript',
+      status: 'pending',
+      icon: Package,
+      type: 'setup',
+    });
+  }
+
+  // Detect package.json
   if (content.match(/```(?:json|javascript)?\s*package\.json/i)) {
-    steps.push({
+    addStep({
       id: 'dependencies',
       title: 'Installing dependencies',
       description: 'Setting up React, TypeScript, and Tailwind CSS',
@@ -184,9 +184,9 @@ function parseContentForSteps(content: string): GenerationStep[] {
     });
   }
 
-  // Check for main app
+  // Detect main App.tsx
   if (content.match(/```(?:typescript|tsx)?\s*src\/App\.tsx/i)) {
-    steps.push({
+    addStep({
       id: 'main-app',
       title: 'Creating main application',
       description: 'Building the core App component with routing',
@@ -196,12 +196,12 @@ function parseContentForSteps(content: string): GenerationStep[] {
     });
   }
 
-  // Extract unique components
+  // Dynamically detect components as they appear
   const componentMatches = [...content.matchAll(/```(?:typescript|tsx)?\s*src\/components\/(\w+)\.tsx/gi)];
   const uniqueComponents = [...new Set(componentMatches.map(match => match[1]))];
   
   uniqueComponents.forEach((componentName) => {
-    steps.push({
+    addStep({
       id: `component-${componentName.toLowerCase()}`,
       title: `Creating ${componentName} component`,
       description: `Building the ${componentName} component with styling`,
@@ -211,12 +211,12 @@ function parseContentForSteps(content: string): GenerationStep[] {
     });
   });
 
-  // Extract unique pages
+  // Dynamically detect pages as they appear
   const pageMatches = [...content.matchAll(/```(?:typescript|tsx)?\s*src\/pages\/(\w+)\.tsx/gi)];
   const uniquePages = [...new Set(pageMatches.map(match => match[1]))];
   
   uniquePages.forEach((pageName) => {
-    steps.push({
+    addStep({
       id: `page-${pageName.toLowerCase()}`,
       title: `Creating ${pageName} page`,
       description: `Building the ${pageName} page layout`,
@@ -226,51 +226,46 @@ function parseContentForSteps(content: string): GenerationStep[] {
     });
   });
 
-  // Add styling step if Tailwind config is found
-  if (content.includes('tailwind.config')) {
-    steps.push({
-      id: 'styling',
-      title: 'Applying styles and theme',
-      description: 'Setting up Tailwind CSS and responsive design',
-      status: 'pending',
-      icon: Palette,
-      type: 'styling',
-    });
-  }
+  // Remove hardcoded styling step - let it appear naturally with other files
 
   return steps;
 }
 
-// Count how many steps should be marked as completed based on actual code blocks in content
-function countCompletedSteps(content: string): number {
-  // Count actual file creation patterns to determine progress
-  const patterns = [
-    /```(?:json|javascript)?\s*package\.json/i,
-    /```(?:typescript|ts)?\s*vite\.config/i,
-    /```(?:typescript|tsx)?\s*src\/App\.tsx/i,
-    /```(?:typescript|tsx)?\s*src\/components\/\w+\.tsx/gi,
-    /```(?:javascript|js)?\s*tailwind\.config/i,
-  ];
-
-  let completedCount = 0;
-  
-  // Always count setup as first step if any code is present
-  if (content.includes('```')) {
-    completedCount = 1;
+// Find which step is currently being worked on based on the most recent file generation
+function findCurrentActiveStep(content: string, steps: GenerationStep[]): number {
+  if (!content.includes('```') || steps.length === 0) {
+    return -1;
   }
 
-  // Count each pattern type as one step
-  patterns.forEach(pattern => {
-    if (content.match(pattern)) {
-      completedCount++;
+  // Find the last (most recent) file being generated by looking at code blocks in reverse order
+  const codeBlocks = [...content.matchAll(/```(?:\w+)?\s*([^\n]+)/g)];
+  if (codeBlocks.length === 0) {
+    return 0; // Setup step
+  }
+
+  // Get the most recent file path
+  const lastBlock = codeBlocks[codeBlocks.length - 1];
+  const filePath = lastBlock[1].trim();
+
+  // Map file paths to step indices
+  for (let i = steps.length - 1; i >= 0; i--) {
+    const step = steps[i];
+    
+    // Check if this step matches the current file being generated
+    if (step.id === 'setup' && i === 0) continue; // Skip setup check
+    if (step.id === 'dependencies' && filePath.includes('package.json')) return i;
+    if (step.id === 'main-app' && filePath.includes('src/App.tsx')) return i;
+    if (step.id.startsWith('component-') && filePath.includes('src/components/')) {
+      const componentName = step.id.replace('component-', '');
+      if (filePath.toLowerCase().includes(componentName)) return i;
     }
-  });
-
-  // Count individual components (each component is a separate step)
-  const componentMatches = content.match(/```(?:typescript|tsx)?\s*src\/components\/\w+\.tsx/gi);
-  if (componentMatches) {
-    completedCount += componentMatches.length - 1; // -1 because we already counted the pattern above
+    if (step.id.startsWith('page-') && filePath.includes('src/pages/')) {
+      const pageName = step.id.replace('page-', '');
+      if (filePath.toLowerCase().includes(pageName)) return i;
+    }
   }
 
-  return completedCount;
+  // If we can't match a specific file, return the last step that should be completed
+  const completedStepCount = Math.min(codeBlocks.length, steps.length);
+  return Math.max(0, completedStepCount - 1);
 }
