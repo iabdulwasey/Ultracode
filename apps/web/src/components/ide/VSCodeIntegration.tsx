@@ -4,20 +4,14 @@ import type { Monaco } from '@monaco-editor/react';
 import { useTheme } from '@/components/theme-provider';
 import { useFileStore } from '@/stores/fileStore';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Terminal } from '@/components/terminal/Terminal';
 import { FileExplorer } from '@/components/file-explorer/FileExplorer';
 import {
   X,
-  SplitSquareVertical,
-  Maximize2,
-  Minimize2,
   Settings,
   Search,
   GitBranch,
   Bug,
   Package,
-  Play,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -37,9 +31,7 @@ export function VSCodeIntegration({ projectId }: VSCodeIntegrationProps) {
   const { files, currentFile, setCurrentFile, loadProjectFiles } = useFileStore();
   const [openFiles, setOpenFiles] = useState<Record<string, OpenFile>>({});
   const [activeFile, setActiveFile] = useState<string | null>(null);
-  const [layout, setLayout] = useState<'default' | 'split' | 'preview'>('default');
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [terminalCollapsed, setTerminalCollapsed] = useState(false);
   const [activePanel, setActivePanel] = useState<'explorer' | 'search' | 'git' | 'debug' | 'extensions'>('explorer');
   
   const monacoRef = useRef<Monaco | null>(null);
@@ -360,7 +352,7 @@ export function VSCodeIntegration({ projectId }: VSCodeIntegrationProps) {
         </div>
 
         {/* Editor */}
-        <div className={cn('flex-1', !terminalCollapsed && 'h-[70%]')}>
+        <div className="flex-1">
           {activeFile && openFiles[activeFile] ? (
             <MonacoEditor
               height="100%"
@@ -398,23 +390,6 @@ export function VSCodeIntegration({ projectId }: VSCodeIntegrationProps) {
           )}
         </div>
 
-        {/* Terminal */}
-        {!terminalCollapsed && (
-          <div className="h-[30%] border-t border-[#3e3e42]">
-            <div className="h-9 bg-[#2d2d30] px-3 flex items-center justify-between">
-              <span className="text-sm text-[#cccccc]">Terminal</span>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-5 w-5 hover:bg-[#2a2d2e]"
-                onClick={() => setTerminalCollapsed(true)}
-              >
-                <X className="h-3 w-3 text-[#cccccc]" />
-              </Button>
-            </div>
-            <Terminal projectId={projectId} />
-          </div>
-        )}
       </div>
     </div>
   );
