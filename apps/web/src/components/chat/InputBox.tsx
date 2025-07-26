@@ -1,13 +1,22 @@
 import { useState, useRef, KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { Send, Paperclip, Code } from 'lucide-react';
+import { Send, Paperclip, Code, Settings, Trash2 } from 'lucide-react';
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
+} from '@/components/ui/dropdown-menu';
+import type { AIModel } from '@ultracode/shared';
 
 interface InputBoxProps {
   value: string;
@@ -15,10 +24,16 @@ interface InputBoxProps {
   onSend: () => void;
   disabled?: boolean;
   placeholder?: string;
+  selectedModel: AIModel;
+  onModelChange: (model: AIModel) => void;
+  models: { value: AIModel; label: string }[];
+  onClearChat: () => void;
+  canClearChat: boolean;
 }
 
-export function InputBox({ value, onChange, onSend, disabled, placeholder }: InputBoxProps) {
+export function InputBox({ value, onChange, onSend, disabled, placeholder, selectedModel, onModelChange, models, onClearChat, canClearChat }: InputBoxProps) {
   const [attachedFiles, setAttachedFiles] = useState<string[]>([]);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -73,7 +88,7 @@ export function InputBox({ value, onChange, onSend, disabled, placeholder }: Inp
           />
           
           <div className="absolute bottom-2 right-2 flex items-center gap-1">
-            <TooltipProvider>
+            <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -93,7 +108,7 @@ export function InputBox({ value, onChange, onSend, disabled, placeholder }: Inp
               </Tooltip>
             </TooltipProvider>
             
-            <TooltipProvider>
+            <TooltipProvider delayDuration={0}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button
@@ -112,6 +127,53 @@ export function InputBox({ value, onChange, onSend, disabled, placeholder }: Inp
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
+
+            <DropdownMenu onOpenChange={setDropdownOpen}>
+              <DropdownMenuTrigger asChild>
+                <TooltipProvider delayDuration={0}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        disabled={disabled}
+                        type="button"
+                      >
+                        <Settings className="h-3 w-3" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Chat settings</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuLabel>AI Model</DropdownMenuLabel>
+                {models.map((model) => (
+                  <DropdownMenuItem
+                    key={model.value}
+                    onClick={() => onModelChange(model.value)}
+                    className={selectedModel === model.value ? "bg-accent" : ""}
+                  >
+                    {model.label}
+                    {selectedModel === model.value && (
+                      <span className="ml-auto">✓</span>
+                    )}
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={onClearChat}
+                  disabled={!canClearChat}
+                  className="text-destructive"
+                >
+                  <Trash2 className="h-3 w-3 mr-2" />
+                  Clear chat
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
         </div>
         

@@ -1,16 +1,14 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
   Play, 
-  Square, 
-  RotateCcw, 
+  RotateCcw,
   Monitor, 
   Tablet, 
   Smartphone,
   Maximize2,
-  RefreshCw,
   AlertCircle,
   Loader2
 } from 'lucide-react';
@@ -246,91 +244,9 @@ export function LocalPreview({ projectId, className }: LocalPreviewProps) {
 
   return (
     <Card className={cn('h-full flex flex-col', className)}>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-lg">Local Preview</CardTitle>
-          <div className="flex items-center gap-2">
-            {previewInfo && (
-              <Badge 
-                variant="secondary" 
-                className={cn('text-white', getStatusColor(previewInfo.status))}
-              >
-                <div className="w-2 h-2 rounded-full bg-white mr-1" />
-                {getStatusText(previewInfo.status)}
-              </Badge>
-            )}
-          </div>
-        </div>
-
-        {/* Controls */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {previewInfo?.status === 'ready' ? (
-              <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={stopPreview}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Square className="h-4 w-4" />
-                  )}
-                  Stop
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={updatePreview}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
-                  Update
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={refreshPreview}
-                >
-                  <RotateCcw className="h-4 w-4" />
-                  Refresh
-                </Button>
-              </>
-            ) : (
-              <Button
-                onClick={() => startPreview()}
-                disabled={isLoading}
-                size="sm"
-              >
-                {isLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Play className="h-4 w-4" />
-                )}
-                {previewInfo?.status === 'error' ? 'Restart' : 'Start'} Preview
-              </Button>
-            )}
-
-            {previewInfo?.status === 'error' && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => startPreview(true)}
-                disabled={isLoading}
-              >
-                <RotateCcw className="h-4 w-4" />
-                Force Recreate
-              </Button>
-            )}
-          </div>
-
-          {previewInfo?.status === 'ready' && (
+      {previewInfo?.status === 'ready' && (
+        <CardHeader className="pb-3 flex-shrink-0">
+          <div className="flex items-center justify-end">
             <div className="flex items-center gap-1">
               {/* Device switching */}
               {Object.entries(deviceConfigs).map(([key, config]) => {
@@ -357,11 +273,11 @@ export function LocalPreview({ projectId, className }: LocalPreviewProps) {
                 <Maximize2 className="h-4 w-4" />
               </Button>
             </div>
-          )}
-        </div>
-      </CardHeader>
+          </div>
+        </CardHeader>
+      )}
 
-      <CardContent className="flex-1 p-0">
+      <CardContent className="flex-1 p-0 min-h-0">
         {error && (
           <div className="p-6 text-center">
             <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
@@ -413,9 +329,9 @@ export function LocalPreview({ projectId, className }: LocalPreviewProps) {
             <div 
               className={cn(
                 'bg-white rounded-lg shadow-lg overflow-hidden transition-all duration-300',
-                device === 'desktop' && 'w-full h-full',
-                device === 'tablet' && 'w-[768px] h-[600px]',
-                device === 'mobile' && 'w-[375px] h-[600px]'
+                device === 'desktop' && 'w-[1200px] h-[800px]',
+                device === 'tablet' && 'w-[768px] h-[800px]',
+                device === 'mobile' && 'w-[375px] h-[700px]'
               )}
             >
               <iframe

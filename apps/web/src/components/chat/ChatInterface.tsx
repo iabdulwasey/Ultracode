@@ -4,14 +4,6 @@ import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import { Trash2, Settings } from 'lucide-react';
 import type { AIModel } from '@ultracode/shared';
 
 interface ChatInterfaceProps {
@@ -79,42 +71,6 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
 
   return (
     <div className="flex flex-col h-full max-h-full overflow-hidden">
-      {/* Chat Header */}
-      <div className="flex-shrink-0 flex items-center justify-between p-4 border-b">
-        <div className="flex items-center gap-4">
-          <h3 className="font-semibold">AI Assistant</h3>
-          <Select
-            value={selectedModel}
-            onValueChange={(value) => setSelectedModel(value as AIModel)}
-            disabled={generating}
-          >
-            <SelectTrigger className="w-[180px]">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {models.map((model) => (
-                <SelectItem key={model.value} value={model.value}>
-                  {model.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={handleClearChat}
-            disabled={messages.length === 0 || generating}
-            title="Clear chat"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-          <Button variant="ghost" size="icon" title="Chat settings">
-            <Settings className="h-4 w-4" />
-          </Button>
-        </div>
-      </div>
 
       {/* Messages Area */}
       <div className="flex-1 overflow-hidden">
@@ -173,13 +129,18 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
       )}
 
       {/* Input Area */}
-      <div className="flex-shrink-0 border-t p-4">
+      <div className="flex-shrink-0 p-4">
         <InputBox
           value={input}
           onChange={setInput}
           onSend={handleSendMessage}
           disabled={generating}
           placeholder={generating ? 'AI is thinking...' : 'Ask me anything...'}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
+          models={models}
+          onClearChat={handleClearChat}
+          canClearChat={messages.length > 0 && !generating}
         />
       </div>
     </div>

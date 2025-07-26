@@ -89,13 +89,13 @@ export default function ProjectPage() {
   }
 
   return (
-    <div className="h-[calc(100vh-3rem)] flex flex-col bg-background animate-fade-in">
+    <div className="h-[calc(100vh-5rem)] flex flex-col bg-background animate-fade-in overflow-hidden">
       {/* Main Content - Full Height */}
-      <div className="flex h-full overflow-hidden">
+      <div className="flex h-full overflow-hidden gap-4 px-2 pt-2 pb-2">
         {/* Unified Editor Panel */}
-        <div className="w-1/2 flex flex-col h-full overflow-hidden">
+        <div className="w-1/3 flex flex-col h-full overflow-hidden rounded-lg border border-border/50 bg-card">
           <Tabs value={selectedTab} onValueChange={setSelectedTab} className="h-full flex flex-col">
-            <TabsList className="w-full justify-start rounded-none border-b border-border/50 h-12 bg-background/50 backdrop-blur-sm flex-shrink-0">
+            <TabsList className="w-full justify-start rounded-t-lg border-b border-border/50 h-12 bg-background/50 backdrop-blur-sm flex-shrink-0">
               {isDevMode && (
                 <TabsTrigger 
                   value="code" 
@@ -117,14 +117,14 @@ export default function ProjectPage() {
             
             {isDevMode && (
               <TabsContent value="code" className="flex-1 m-0 animate-fade-in overflow-hidden">
-                <div className="h-full border-r border-border/50">
+                <div className="h-full">
                   <VSCodeIntegration projectId={id!} />
                 </div>
               </TabsContent>
             )}
             
             <TabsContent value="chat" className="flex-1 m-0 animate-fade-in overflow-hidden">
-              <div className="h-full border-r border-border/50">
+              <div className="h-full">
                 <ChatInterface projectId={id!} />
               </div>
             </TabsContent>
@@ -132,8 +132,8 @@ export default function ProjectPage() {
         </div>
 
         {/* Enhanced Preview Panel */}
-        <div className="w-1/2 flex flex-col h-full overflow-hidden">
-          <div className="h-12 bg-background/50 backdrop-blur-sm border-b border-border/50 flex items-center justify-between px-4 flex-shrink-0">
+        <div className="flex-1 flex flex-col h-full overflow-hidden rounded-lg border border-border/50 bg-card">
+          <div className="h-12 bg-background/50 backdrop-blur-sm rounded-t-lg flex items-center justify-between px-4 flex-shrink-0">
             <div className="flex items-center gap-2">
               <Monitor className="h-4 w-4 text-primary" />
               <span className="font-medium text-foreground">Live Preview</span>

@@ -64,7 +64,7 @@ export default function Header() {
 
 
   return (
-    <nav className="h-12 bg-card border-b border-border flex items-center justify-between px-4 backdrop-blur-md">
+    <nav className="fixed top-0 left-0 right-0 z-50 h-12 bg-card border-b border-border flex items-center justify-between px-4 backdrop-blur-md">
       <div className="flex items-center space-x-4">
         <div className="flex items-center space-x-2">
           <div className="w-3 h-3 gradient-circle rounded-full animate-gradient-pulse"></div>

@@ -16,6 +16,12 @@
       "projectId": "30ddd74f-f029-4319-a8b7-15044c840d14",
       "port": 4002,
       "url": "http://localhost:4002",
+      "status": "ready"
+    },
+    "77d78225-e57e-4fef-af95-c2e3a3018201": {
+      "projectId": "77d78225-e57e-4fef-af95-c2e3a3018201",
+      "port": 4003,
+      "url": "http://localhost:4003",
       "status": "starting"
     }
   }
