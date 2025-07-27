@@ -64,6 +64,24 @@
       "projectId": "41d75486-c08c-4e5b-97c5-a8c6ef962f5e",
       "port": 4010,
       "url": "http://localhost:4010",
+      "status": "error"
+    },
+    "fef9d425-590d-41a5-be36-fcbf27a0f818": {
+      "projectId": "fef9d425-590d-41a5-be36-fcbf27a0f818",
+      "port": 4012,
+      "url": "http://localhost:4012",
+      "status": "error"
+    },
+    "79d36555-37eb-482d-b2a5-f3ca06bcbdf7": {
+      "projectId": "79d36555-37eb-482d-b2a5-f3ca06bcbdf7",
+      "port": 4013,
+      "url": "http://localhost:4013",
+      "status": "error"
+    },
+    "73a7baa2-0ea1-46f6-a8bb-c1999981fd94": {
+      "projectId": "73a7baa2-0ea1-46f6-a8bb-c1999981fd94",
+      "port": 4014,
+      "url": "http://localhost:4014",
       "status": "ready"
     },
     "6300a5e8-f673-47c5-b678-9542be0cdbb1": {

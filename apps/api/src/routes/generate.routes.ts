@@ -141,6 +141,7 @@ Package.json Dependencies:
 - Always include: react, react-dom, @types/react, @types/react-dom
 - Build tools: vite, @vitejs/plugin-react-swc, typescript
 - Styling: tailwindcss, autoprefixer, postcss
+- Icons: lucide-react, react-icons (for comprehensive icon coverage)
 - Add other packages as needed for functionality
 
 Tailwind Configuration (CRITICAL):
@@ -160,7 +161,29 @@ For each file, use this EXACT format:
 {
   "name": "app-name",
   "private": true,
-  ...
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "lucide-react": "^0.263.1",
+    "react-icons": "^4.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.2.66",
+    "@types/react-dom": "^18.2.22",
+    "@vitejs/plugin-react-swc": "^3.5.0",
+    "autoprefixer": "^10.4.19",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "typescript": "^5.2.2",
+    "vite": "^5.2.0"
+  }
 }
 \`\`\`
 
@@ -328,6 +351,12 @@ Guidelines:
 12. CORRECT: className="bg-[url('data:image/svg+xml,%3Csvg%20width%3D%2260%22%20height%3D%2260%22...')]"
 13. INCORRECT: className="bg-[url('data:image/svg+xml,%3Csvg width="60" height="60"...')]" 
 14. ALWAYS: URL-encode quotes (%22) and spaces (%20) in data URLs to prevent JSX parsing errors
+15. ICON LIBRARIES: Use multiple icon libraries for comprehensive coverage
+16. PRIMARY ICONS: lucide-react for modern, consistent icons (Heart, User, Mail, Phone, Menu, X, ChevronDown, Star, Check, Plus, Minus, Search, Calendar, Clock, MapPin, Shield, Zap, Users, CheckCircle, DollarSign, Smile, Award, Wind, Activity, etc.)
+17. EXTENDED ICONS: react-icons for specialized icons not in Lucide (import from react-icons/fa, react-icons/md, react-icons/hi, react-icons/bs, etc.)
+18. EXAMPLES: import { FaLungs, FaBrain } from 'react-icons/fa'; import { MdHealthAndSafety } from 'react-icons/md'; import { HiEye } from 'react-icons/hi';
+19. TYPESCRIPT CONFIG: Always include proper tsconfig.json and tsconfig.node.json files
+20. VERIFY ALL IMPORTS: Every imported component, icon, and utility must actually exist in the specified packages
 
 ${context?.currentFile ? `Context - Current file: ${context.currentFile}` : ''}
 ${context?.selectedCode ? `Context - Selected code:\n${context.selectedCode}` : ''}

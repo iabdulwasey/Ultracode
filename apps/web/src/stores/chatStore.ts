@@ -51,6 +51,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       
       if (sessions && sessions.length > 0) {
         // Use existing session
+        console.log('Loading existing chat session:', sessions[0].id, 'with', sessions[0].messages?.length || 0, 'messages');
         session = {
           id: sessions[0].id,
           projectId: sessions[0].project_id,
@@ -206,7 +207,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       const finalMessages = [...updatedMessages, aiMessage];
 
       // Update session in database
-      await supabase
+      const { error: updateError } = await supabase
         .from('chat_sessions')
         .update({
           messages: finalMessages,
@@ -214,6 +215,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
           updated_at: new Date().toISOString(),
         })
         .eq('id', currentSessionId);
+
+      if (updateError) {
+        console.error('Failed to update chat session:', updateError);
+        // Still update local state even if database update fails
+      } else {
+        console.log('Successfully updated chat session with', finalMessages.length, 'messages');
+      }
 
       set({
         sessions: {

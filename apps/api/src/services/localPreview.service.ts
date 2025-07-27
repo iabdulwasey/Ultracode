@@ -382,7 +382,9 @@ class LocalPreviewService {
       },
       dependencies: {
         react: "^18.2.0",
-        "react-dom": "^18.2.0"
+        "react-dom": "^18.2.0",
+        "lucide-react": "^0.263.1",
+        "react-icons": "^4.10.1"
       },
       devDependencies: {
         "@types/react": "^18.2.66",
@@ -559,10 +561,48 @@ export default {
   }
 
   /**
-   * Install dependencies for the project
+   * Install dependencies for the project with retry logic
    */
-  private async installDependencies(projectPath: string): Promise<void> {
+  private async installDependencies(projectPath: string, maxRetries: number = 3): Promise<void> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        logger.info(`Installing dependencies (attempt ${attempt}/${maxRetries})`, { projectPath });
+        await this.runNpmInstall(projectPath);
+        return; // Success, exit retry loop
+      } catch (error) {
+        logger.warn(`npm install attempt ${attempt} failed`, { 
+          projectPath, 
+          attempt, 
+          maxRetries, 
+          error: error instanceof Error ? error.message : 'Unknown error' 
+        });
+        
+        if (attempt === maxRetries) {
+          throw error; // Final attempt failed, throw error
+        }
+        
+        // Wait before retry with exponential backoff
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // Cap at 10s
+        logger.info(`Retrying npm install in ${delay}ms`, { projectPath, attempt });
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  /**
+   * Run npm install command
+   */
+  private async runNpmInstall(projectPath: string): Promise<void> {
     const { spawn } = await import('child_process');
+    const fs = await import('fs/promises');
+    
+    // Clean up any corrupted npm artifacts before install
+    try {
+      await fs.rm(path.join(projectPath, 'node_modules'), { recursive: true, force: true });
+      await fs.rm(path.join(projectPath, 'package-lock.json'), { force: true });
+    } catch (error) {
+      // Ignore cleanup errors
+    }
     
     return new Promise((resolve, reject) => {
       logger.info('Installing dependencies', { projectPath });
@@ -576,13 +616,27 @@ export default {
       let stdout = '';
       let stderr = '';
       
-      const npmInstall = spawn('npm', ['install', '--silent', '--no-warnings'], {
+      const npmInstall = spawn('npm', [
+        'install',
+        '--silent',
+        '--no-warnings',
+        '--no-audit',           // Skip audit for speed
+        '--no-fund',            // Skip funding messages  
+        '--legacy-peer-deps',   // Handle peer dependency conflicts
+        '--timeout=60000',      // 60 second timeout per package
+        '--retry=2',            // Retry failed downloads
+        '--registry=https://registry.npmjs.org/' // Explicit registry
+      ], {
         cwd: projectPath,
-        stdio: 'pipe', // Capture output instead of inheriting
+        stdio: 'pipe',
         env: { 
           ...process.env, 
           NODE_NO_WARNINGS: '1',
-          NPM_CONFIG_LOGLEVEL: 'error'
+          NPM_CONFIG_LOGLEVEL: 'error',
+          npm_config_progress: 'false',
+          npm_config_fetch_timeout: '60000',
+          npm_config_fetch_retry_mintimeout: '10000',
+          npm_config_fetch_retry_maxtimeout: '60000'
         }
       });
 
