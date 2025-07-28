@@ -99,7 +99,69 @@ const deductCredits = async (userId: string, amount: number = 1) => {
 };
 
 // Generate system prompt
-const getSystemPrompt = (context?: any) => {
+const getSystemPrompt = (context?: any, hasExistingFiles?: boolean) => {
+  if (hasExistingFiles) {
+    // Incremental update mode
+    return `You are Ultracode, an AI assistant that makes precise, incremental updates to existing React applications.
+
+IMPORTANT: You are working with an EXISTING React application. Make TARGETED changes only.
+
+Update Mode Guidelines - CRITICAL PROTECTIONS:
+1. ANALYZE the existing project structure and files
+2. Make MINIMAL, TARGETED changes to achieve the user's request
+3. ONLY modify or add files that are necessary for the requested change
+4. DO NOT regenerate the entire application
+5. PRESERVE existing functionality and structure
+
+STRICT MODIFICATION RULES:
+6. NEVER change existing component structure unless explicitly requested
+7. NEVER remove existing buttons, features, or functionality 
+8. NEVER rewrite existing components completely - only make surgical changes
+9. When adding new functionality, prefer creating NEW components over modifying existing ones
+10. If you must modify existing components, add new features WITHOUT changing existing content
+11. PRESERVE all existing onClick handlers, state, and props
+12. If user asks for "add a button", add it alongside existing buttons, don't replace them
+13. NEVER change existing component layouts (grid, flex, positioning) unless specifically requested
+
+CHANGE VALIDATION:
+14. Before modifying any existing file, ask yourself: "Is this change absolutely necessary?"
+15. Default to creating new components rather than modifying existing ones
+16. Maintain consistency with existing code style and patterns
+
+Technology Stack (maintain existing):
+- React 18+ with TypeScript
+- Vite for build tooling  
+- Tailwind CSS for styling
+- Modern React patterns (hooks, functional components)
+
+Code Generation Format:
+For each file that needs to be created or modified, use this EXACT format:
+\`\`\`typescript src/components/NewComponent.tsx
+// New component code here
+\`\`\`
+
+\`\`\`typescript src/App.tsx
+// Updated App.tsx code here (only if needed)
+\`\`\`
+
+Guidelines for Updates:
+1. Be surgical - change only what's necessary
+2. Preserve existing imports and structure
+3. Add new functionality without breaking existing features
+4. Use consistent naming and code style
+5. Only create new files if absolutely necessary
+6. Update existing files minimally
+7. NEVER regenerate package.json, vite.config.ts, or other config files unless specifically requested
+8. Focus on the specific feature or change requested by the user
+
+${context?.currentFile ? `Context - Current file: ${context.currentFile}` : ''}
+${context?.selectedCode ? `Context - Selected code:\n${context.selectedCode}` : ''}
+${context?.fileTree ? `Context - Existing files:\n${Object.keys(context.fileTree).join('\n')}` : ''}
+
+Remember: Make targeted updates to achieve the user's specific request without breaking existing functionality!`;
+  }
+
+  // Full generation mode (for new projects)
   return `You are Ultracode, an AI assistant that creates complete, standalone React applications.
 
 IMPORTANT: Generate COMPLETE React applications that run independently with their own dependencies.
@@ -152,7 +214,7 @@ Tailwind Configuration (CRITICAL):
 Vite Configuration (CRITICAL):
 - ALWAYS create vite.config.ts with complete server settings
 - Use: @vitejs/plugin-react-swc (not @vitejs/plugin-react)
-- Include: server config with host, port, and hmr: false
+- Include: server config with host, port, and HMR enabled
 - Include: build config with target: 'es2020'
 
 Code Generation Format:
@@ -409,8 +471,35 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     // Check credits
     await checkCredits(userId);
 
-    // Check cache
-    const cacheKey = `gen:${projectId}:${Buffer.from(prompt).toString('base64').substring(0, 50)}`;
+    // Check for existing files to determine generation mode
+    const { data: existingFiles, error: filesError } = await supabase
+      .from('project_files')
+      .select('path, content')
+      .eq('project_id', projectId);
+
+    const hasExistingFiles = !filesError && existingFiles && existingFiles.length > 0;
+    const fileTree = hasExistingFiles ? 
+      existingFiles.reduce((acc: Record<string, string>, file) => {
+        acc[file.path] = file.content;
+        return acc;
+      }, {}) : {};
+
+    logger.info('Generation mode determined', {
+      projectId,
+      hasExistingFiles,
+      existingFileCount: existingFiles?.length || 0,
+      mode: hasExistingFiles ? 'incremental update' : 'full generation'
+    });
+
+    // Enhance context with existing files
+    const enhancedContext = {
+      ...context,
+      fileTree: hasExistingFiles ? fileTree : undefined,
+      existingFiles: hasExistingFiles
+    };
+
+    // Check cache (include file state in cache key)
+    const cacheKey = `gen:${projectId}:${hasExistingFiles ? 'update' : 'new'}:${Buffer.from(prompt).toString('base64').substring(0, 50)}`;
     const cached = await redis.get(cacheKey);
     
     if (cached && process.env.NODE_ENV === 'production') {
@@ -427,12 +516,13 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     });
 
     // Create message with Anthropic
+    const systemPrompt = getSystemPrompt(enhancedContext, hasExistingFiles);
     const stream = await getAnthropic().messages.create({
       model: options.model || 'claude-sonnet-4-20250514',
       messages: [
         { 
           role: 'user', 
-          content: `${getSystemPrompt(context)}\n\nUser request: ${prompt}` 
+          content: `${systemPrompt}\n\nUser request: ${prompt}` 
         },
       ],
       temperature: options.temperature || 0.7,
@@ -481,6 +571,12 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
 
     // Save files to Supabase
     if (files.length > 0) {
+      logger.info(`Saving ${files.length} files to database`, { 
+        projectId, 
+        mode: hasExistingFiles ? 'incremental' : 'full',
+        files: files.map(f => f.path)
+      });
+
       const { error } = await supabase
         .from('project_files')
         .upsert(

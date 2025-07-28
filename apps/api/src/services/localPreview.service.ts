@@ -47,6 +47,7 @@ class LocalPreviewService {
       const state = JSON.parse(stateData);
       
       // Restore preview info without servers (they'll be recreated)
+      // Mark all as error status since server processes won't survive restart
       for (const [projectId, info] of Object.entries(state.activeServers || {})) {
         const previewInfo = info as LocalPreviewInfo;
         this.activeServers.set(projectId, {
@@ -57,7 +58,8 @@ class LocalPreviewService {
       }
       
       logger.info('Loaded preview state', { 
-        restoredPreviews: this.activeServers.size 
+        restoredPreviews: this.activeServers.size,
+        restoredProjects: Array.from(this.activeServers.keys())
       });
     } catch (error) {
       // No state file or invalid JSON, start fresh
@@ -90,14 +92,37 @@ class LocalPreviewService {
    */
   async createPreview(projectId: string, userId: string): Promise<LocalPreviewInfo> {
     try {
-      // Always stop existing server to ensure proper port allocation and config regeneration
+      // Check if server already exists and is running
       const existing = this.activeServers.get(projectId);
       if (existing) {
-        logger.info('Stopping existing preview to recreate with proper configuration', { 
+        logger.info('Found existing server for project', { 
           projectId, 
-          oldPort: existing.port 
+          status: existing.status,
+          port: existing.port,
+          hasServer: !!existing.server
         });
-        await this.stopPreview(projectId);
+
+        // If server is healthy and running, just update files
+        if (existing.status === 'ready' && existing.server) {
+          logger.info('Server is healthy, reusing existing server and updating files', { 
+            projectId, 
+            port: existing.port,
+            url: existing.url
+          });
+          
+          return await this.updatePreview(projectId);
+        }
+
+        // If server exists but is unhealthy, clean it up
+        if (existing.status === 'error' || !existing.server) {
+          logger.info('Server is unhealthy, cleaning up before creating new one', { 
+            projectId, 
+            oldPort: existing.port,
+            status: existing.status,
+            hasServer: !!existing.server
+          });
+          await this.stopPreview(projectId);
+        }
       }
 
       logger.info('Creating new local preview', { projectId, userId });
@@ -290,7 +315,7 @@ class LocalPreviewService {
   }
 
   /**
-   * Update project files and restart preview
+   * Update project files incrementally (preserving node_modules and build state)
    */
   async updatePreview(projectId: string): Promise<LocalPreviewInfo> {
     const existing = this.activeServers.get(projectId);
@@ -312,14 +337,339 @@ class LocalPreviewService {
       throw new Error('Failed to fetch updated files');
     }
 
-    // Update files on disk  
+    // Update only the AI-modified files (preserves node_modules and build state)
     const projectPath = path.join(this.tempDir, projectId);
-    await this.setupProjectFiles(projectPath, files, existing.port);
+    await this.updateChangedFiles(projectPath, files, existing.port);
 
     // Vite will automatically hot reload the changes
-    logger.info('Project files updated, Vite will hot reload', { projectId });
+    logger.info('Project files updated incrementally, Vite will hot reload', { projectId });
 
     return existing;
+  }
+
+  /**
+   * Update only the changed files and analyze dependencies for additional updates needed
+   */
+  private async updateChangedFiles(projectPath: string, files: ProjectFile[], port?: number): Promise<void> {
+    logger.info('Starting incremental file update', { 
+      projectPath, 
+      changedFiles: files.length,
+      filesList: files.map(f => f.path)
+    });
+
+    // Parse files from AI-generated content
+    const parsedFiles = this.parseGeneratedFiles(files);
+    
+    // Step 1: Update only the AI-modified files
+    const updatedFilePaths = new Set<string>();
+    for (const file of parsedFiles) {
+      const fullPath = path.join(projectPath, file.path);
+      const dir = path.dirname(fullPath);
+      
+      // Ensure directory exists
+      await fs.mkdir(dir, { recursive: true });
+      
+      // Write the updated file
+      await fs.writeFile(fullPath, file.content, 'utf-8');
+      updatedFilePaths.add(file.path);
+      
+      logger.info('Updated AI-modified file', { filePath: file.path });
+    }
+
+    // Step 2: Analyze dependencies and update related files if needed
+    await this.analyzeAndUpdateDependencies(projectPath, parsedFiles, updatedFilePaths, port);
+    
+    // Step 3: Sync all updated files back to Supabase
+    await this.syncFilesToSupabase(projectPath, updatedFilePaths);
+    
+    logger.info('Incremental file update completed', { 
+      projectPath, 
+      aiModifiedFiles: parsedFiles.length,
+      totalUpdatedFiles: updatedFilePaths.size
+    });
+  }
+
+  /**
+   * Analyze AI changes and update dependent files (App.tsx imports, Tailwind config, etc.)
+   */
+  private async analyzeAndUpdateDependencies(
+    projectPath: string, 
+    aiModifiedFiles: ProjectFile[], 
+    updatedPaths: Set<string>,
+    port?: number
+  ): Promise<void> {
+    
+    // Check if new components were added that need to be imported in App.tsx
+    const newComponents = aiModifiedFiles.filter(f => 
+      f.path.startsWith('src/components/') && 
+      (f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
+    );
+
+    if (newComponents.length > 0) {
+      await this.updateAppImports(projectPath, newComponents, updatedPaths);
+    }
+
+    // Check if Tailwind classes are used that might need config updates
+    const hasNewTailwindClasses = aiModifiedFiles.some(f => 
+      f.content.includes('className=') && 
+      this.hasCustomTailwindClasses(f.content)
+    );
+
+    if (hasNewTailwindClasses) {
+      await this.ensureTailwindConfig(projectPath, updatedPaths);
+    }
+
+    // Update Vite config port if needed
+    if (port) {
+      await this.updateViteConfigPort(projectPath, port, updatedPaths);
+    }
+
+    // Ensure package.json has all required dependencies
+    await this.ensureRequiredDependencies(projectPath, aiModifiedFiles, updatedPaths);
+  }
+
+  /**
+   * Update App.tsx to import new components if needed
+   */
+  private async updateAppImports(
+    projectPath: string, 
+    newComponents: ProjectFile[], 
+    updatedPaths: Set<string>
+  ): Promise<void> {
+    const appPath = path.join(projectPath, 'src', 'App.tsx');
+    
+    try {
+      const currentAppContent = await fs.readFile(appPath, 'utf-8');
+      let needsUpdate = false;
+      let updatedContent = currentAppContent;
+
+      for (const component of newComponents) {
+        const componentName = path.basename(component.path, path.extname(component.path));
+        const importPath = `./${component.path.replace('src/', '').replace(/\.(tsx?|jsx?)$/, '')}`;
+        
+        // Check if import already exists
+        const importRegex = new RegExp(`import\\s+${componentName}\\s+from\\s+['"]${importPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`);
+        
+        if (!importRegex.test(updatedContent)) {
+          // Add import
+          const importStatement = `import ${componentName} from '${importPath}';`;
+          
+          // Find where to insert the import (after existing imports)
+          const importLines = updatedContent.split('\n');
+          let lastImportIndex = -1;
+          
+          for (let i = 0; i < importLines.length; i++) {
+            if (importLines[i].trim().startsWith('import ')) {
+              lastImportIndex = i;
+            }
+          }
+          
+          if (lastImportIndex >= 0) {
+            importLines.splice(lastImportIndex + 1, 0, importStatement);
+            updatedContent = importLines.join('\n');
+            needsUpdate = true;
+            
+            logger.info('Added import to App.tsx', { componentName, importPath });
+          }
+        }
+      }
+
+      if (needsUpdate) {
+        await fs.writeFile(appPath, updatedContent, 'utf-8');
+        updatedPaths.add('src/App.tsx');
+        logger.info('Updated App.tsx with new component imports');
+      }
+      
+    } catch (error) {
+      logger.warn('Could not update App.tsx imports', { error });
+    }
+  }
+
+  /**
+   * Check if content has custom Tailwind classes that might need config
+   */
+  private hasCustomTailwindClasses(content: string): boolean {
+    // Look for custom colors, spacing, or complex Tailwind patterns
+    const customClassPatterns = [
+      /className="[^"]*bg-\[#[0-9a-fA-F]+\]/,  // Custom hex colors
+      /className="[^"]*text-\[[^\]]+\]/,        // Custom text sizes/colors
+      /className="[^"]*w-\[[^\]]+\]/,           // Custom widths
+      /className="[^"]*h-\[[^\]]+\]/,           // Custom heights
+    ];
+    
+    return customClassPatterns.some(pattern => pattern.test(content));
+  }
+
+  /**
+   * Ensure Tailwind config exists and is properly set up
+   */
+  private async ensureTailwindConfig(projectPath: string, updatedPaths: Set<string>): Promise<void> {
+    const tailwindConfigPath = path.join(projectPath, 'tailwind.config.js');
+    
+    try {
+      await fs.access(tailwindConfigPath);
+      // Tailwind config exists, no need to update
+    } catch {
+      // Create default Tailwind config
+      const tailwindConfig = `/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}`;
+      
+      await fs.writeFile(tailwindConfigPath, tailwindConfig, 'utf-8');
+      updatedPaths.add('tailwind.config.js');
+      logger.info('Created missing Tailwind config');
+    }
+  }
+
+  /**
+   * Update Vite config port if needed
+   */
+  private async updateViteConfigPort(projectPath: string, port: number, updatedPaths: Set<string>): Promise<void> {
+    const viteConfigPath = path.join(projectPath, 'vite.config.ts');
+    
+    try {
+      const currentContent = await fs.readFile(viteConfigPath, 'utf-8');
+      const updatedContent = currentContent.replace(/port:\s*\d+/, `port: ${port}`);
+      
+      if (updatedContent !== currentContent) {
+        await fs.writeFile(viteConfigPath, updatedContent, 'utf-8');
+        updatedPaths.add('vite.config.ts');
+        logger.info('Updated Vite config port', { port });
+      }
+    } catch (error) {
+      logger.warn('Could not update Vite config port', { error });
+    }
+  }
+
+  /**
+   * Ensure package.json has required dependencies for AI-generated code
+   */
+  private async ensureRequiredDependencies(
+    _projectPath: string, 
+    aiModifiedFiles: ProjectFile[], 
+    _updatedPaths: Set<string>
+  ): Promise<void> {
+    // Check if AI code uses any new libraries
+    const usedLibraries = new Set<string>();
+    
+    for (const file of aiModifiedFiles) {
+      // Extract import statements to find used libraries
+      const importMatches = file.content.match(/import\s+.*?\s+from\s+['"]([^'"]+)['"]/g);
+      if (importMatches) {
+        importMatches.forEach(importMatch => {
+          const libMatch = importMatch.match(/from\s+['"]([^'"]+)['"]/);
+          if (libMatch && !libMatch[1].startsWith('.')) {
+            // External library (not relative import)
+            usedLibraries.add(libMatch[1]);
+          }
+        });
+      }
+    }
+
+    if (usedLibraries.size > 0) {
+      logger.info('Detected external libraries in AI code', { 
+        libraries: Array.from(usedLibraries) 
+      });
+      // For now, just log - could implement automatic dependency installation
+    }
+  }
+
+  /**
+   * Sync locally updated files back to Supabase database
+   */
+  private async syncFilesToSupabase(projectPath: string, updatedFilePaths: Set<string>): Promise<void> {
+    if (updatedFilePaths.size === 0) {
+      return;
+    }
+
+    // Extract project ID from project path
+    const projectId = path.basename(projectPath);
+    
+    logger.info('Syncing updated files to Supabase', { 
+      projectId, 
+      fileCount: updatedFilePaths.size,
+      files: Array.from(updatedFilePaths)
+    });
+
+    try {
+      // Read all updated files from disk and prepare for database update
+      const filesToSync: ProjectFile[] = [];
+      
+      for (const filePath of updatedFilePaths) {
+        try {
+          const fullPath = path.join(projectPath, filePath);
+          const content = await fs.readFile(fullPath, 'utf-8');
+          const fileExtension = path.extname(filePath);
+          
+          // Determine file type
+          let fileType = 'text';
+          if (['.tsx', '.ts'].includes(fileExtension)) {
+            fileType = 'typescript';
+          } else if (['.jsx', '.js'].includes(fileExtension)) {
+            fileType = 'javascript';
+          } else if (fileExtension === '.css') {
+            fileType = 'css';
+          } else if (fileExtension === '.json') {
+            fileType = 'json';
+          } else if (fileExtension === '.html') {
+            fileType = 'html';
+          }
+
+          filesToSync.push({
+            path: filePath,
+            content,
+            type: fileType
+          });
+        } catch (error) {
+          logger.warn('Failed to read file for sync', { filePath, error });
+        }
+      }
+
+      // Update files in Supabase database
+      if (filesToSync.length > 0 && supabase) {
+        for (const file of filesToSync) {
+          const { error } = await supabase
+            .from('project_files')
+            .upsert({
+              project_id: projectId,
+              file_path: file.path,
+              content: file.content,
+              file_type: file.type,
+              updated_at: new Date().toISOString()
+            }, {
+              onConflict: 'project_id,file_path'
+            });
+
+          if (error) {
+            logger.error('Failed to sync file to Supabase', { 
+              projectId, 
+              filePath: file.path, 
+              error 
+            });
+          } else {
+            logger.debug('Synced file to Supabase', { 
+              projectId, 
+              filePath: file.path 
+            });
+          }
+        }
+
+        logger.info('Successfully synced files to Supabase', { 
+          projectId, 
+          syncedFiles: filesToSync.length 
+        });
+      }
+    } catch (error) {
+      logger.error('Failed to sync files to Supabase', { projectId, error });
+    }
   }
 
   /**
@@ -569,7 +919,7 @@ export default App;`;
       logger.debug('Wrote file', { filePath, fullPath });
     }
 
-    // Create vite.config.ts with SWC plugin and completely disabled HMR
+    // Create vite.config.ts with SWC plugin and HMR enabled for live updates
     // Use the actual assigned port directly in config
     const actualPort = port || 4000;
     logger.info('Creating vite.config.ts', { projectPath, assignedPort: port, actualPort });
@@ -582,7 +932,9 @@ export default defineConfig({
     host: '0.0.0.0',
     port: ${actualPort},
     strictPort: false,
-    hmr: false
+    hmr: {
+      port: ${actualPort + 1000}
+    }
   },
   build: {
     target: 'es2020',
@@ -881,6 +1233,7 @@ export default {
 
   /**
    * Find an available port starting from basePort
+   * Checks both our tracked servers AND actual system port availability with HTTP test
    */
   private async findAvailablePort(): Promise<number> {
     const net = await import('net');
@@ -890,30 +1243,79 @@ export default {
       Array.from(this.activeServers.values()).map(server => server.port)
     );
     
-    return new Promise((resolve, reject) => {
-      const server = net.createServer();
-      
-      const tryPort = (port: number) => {
-        // Skip port if already used by our service
-        if (usedPorts.has(port)) {
-          tryPort(port + 1);
-          return;
-        }
+    const isPortReallyAvailable = async (port: number): Promise<boolean> => {
+      // First test with socket binding
+      return new Promise((resolve) => {
+        const server = net.createServer();
         
         server.listen(port, () => {
-          server.close(() => resolve(port));
+          server.close(() => {
+            // Port bound successfully, now test if there's an HTTP server
+            this.testHttpConnection(port).then((hasHttpServer) => {
+              if (hasHttpServer) {
+                logger.debug(`Port ${port} has existing HTTP server, not available`);
+                resolve(false);
+              } else {
+                logger.debug(`Port ${port} is truly available`);
+                resolve(true);
+              }
+            });
+          });
         });
         
         server.on('error', (err: any) => {
           if (err.code === 'EADDRINUSE') {
-            tryPort(port + 1);
+            logger.debug(`Port ${port} binding failed - clearly in use`);
+            resolve(false);
           } else {
-            reject(err);
+            logger.debug(`Port ${port} error during test:`, err.code);
+            resolve(false);
           }
         });
-      };
+      });
+    };
+    
+    const tryPort = async (port: number): Promise<number> => {
+      // Skip port if already used by our service
+      if (usedPorts.has(port)) {
+        logger.debug(`Port ${port} already tracked by our service, trying next port`);
+        return tryPort(port + 1);
+      }
       
-      tryPort(this.basePort);
+      // Test if port is actually available
+      const available = await isPortReallyAvailable(port);
+      if (available) {
+        logger.info(`Found available port: ${port}`);
+        return port;
+      } else {
+        logger.debug(`Port ${port} is occupied, trying next port`);
+        return tryPort(port + 1);
+      }
+    };
+    
+    logger.info(`Starting port search from basePort: ${this.basePort}`);
+    return tryPort(this.basePort);
+  }
+
+  /**
+   * Test if there's an HTTP server responding on the given port
+   */
+  private async testHttpConnection(port: number): Promise<boolean> {
+    const http = await import('http');
+    
+    return new Promise((resolve) => {
+      const req = http.get(`http://localhost:${port}`, { timeout: 1000 }, () => {
+        resolve(true); // HTTP server is responding
+      });
+      
+      req.on('error', () => {
+        resolve(false); // No HTTP server or connection failed
+      });
+      
+      req.on('timeout', () => {
+        req.destroy();
+        resolve(false); // Timeout means no responsive HTTP server
+      });
     });
   }
 }
