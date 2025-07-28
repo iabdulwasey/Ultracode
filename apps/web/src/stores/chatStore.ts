@@ -30,6 +30,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   selectedModel: 'claude-sonnet-4-20250514',
 
   loadChatSession: async (projectId: string) => {
+    console.log('chatStore: loadChatSession called for project', projectId);
     set({ loading: true, error: null });
     
     try {

@@ -625,7 +625,9 @@ export default {
         '--legacy-peer-deps',   // Handle peer dependency conflicts
         '--timeout=60000',      // 60 second timeout per package
         '--retry=2',            // Retry failed downloads
-        '--registry=https://registry.npmjs.org/' // Explicit registry
+        '--registry=https://registry.npmjs.org/', // Explicit registry
+        '--prefer-offline',     // Use cache when possible for speed
+        '--no-shrinkwrap'       // Avoid package-lock conflicts
       ], {
         cwd: projectPath,
         stdio: 'pipe',

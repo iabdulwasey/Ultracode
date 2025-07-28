@@ -353,10 +353,14 @@ Guidelines:
 14. ALWAYS: URL-encode quotes (%22) and spaces (%20) in data URLs to prevent JSX parsing errors
 15. ICON LIBRARIES: Use multiple icon libraries for comprehensive coverage
 16. PRIMARY ICONS: lucide-react for modern, consistent icons (Heart, User, Mail, Phone, Menu, X, ChevronDown, Star, Check, Plus, Minus, Search, Calendar, Clock, MapPin, Shield, Zap, Users, CheckCircle, DollarSign, Smile, Award, Wind, Activity, etc.)
-17. EXTENDED ICONS: react-icons for specialized icons not in Lucide (import from react-icons/fa, react-icons/md, react-icons/hi, react-icons/bs, etc.)
-18. EXAMPLES: import { FaLungs, FaBrain } from 'react-icons/fa'; import { MdHealthAndSafety } from 'react-icons/md'; import { HiEye } from 'react-icons/hi';
-19. TYPESCRIPT CONFIG: Always include proper tsconfig.json and tsconfig.node.json files
-20. VERIFY ALL IMPORTS: Every imported component, icon, and utility must actually exist in the specified packages
+17. EXTENDED ICONS: react-icons for specialized icons not in Lucide - BUT USE WITH EXTREME CAUTION
+18. COMMON SAFE FA ICONS: FaHeart, FaUser, FaStar, FaHome, FaPhone, FaEnvelope, FaCheck, FaArrowRight, FaPlay, FaPause, FaCog, FaSearch, FaEdit, FaTrash, FaPlus, FaMinus
+19. COMMON SAFE GI ICONS: GiSword, GiShield, GiHeart, GiStar, GiBrain, GiMountain, GiTree, GiFlower
+20. NEVER USE RARE ICONS: Avoid specialized icons like FaTorii, FaSpecific, or any icon you're not 100% sure exists
+21. ICON VALIDATION RULE: If you're not certain an icon exists, use a Lucide icon instead
+22. PREFER LUCIDE: When in doubt, always choose Lucide icons over react-icons for reliability
+23. TYPESCRIPT CONFIG: Always include proper tsconfig.json and tsconfig.node.json files
+24. VERIFY ALL IMPORTS: Every imported component, icon, and utility must actually exist in the specified packages
 
 ${context?.currentFile ? `Context - Current file: ${context.currentFile}` : ''}
 ${context?.selectedCode ? `Context - Selected code:\n${context.selectedCode}` : ''}

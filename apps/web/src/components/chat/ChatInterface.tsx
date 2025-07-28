@@ -36,8 +36,17 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    loadChatSession(projectId);
-  }, [projectId, loadChatSession]);
+    // Only load chat session if we don't already have one for this project
+    const currentSession = currentSessionId ? sessions[currentSessionId] : null;
+    const isCorrectProject = currentSession?.projectId === projectId;
+    
+    if (!isCorrectProject) {
+      console.log('ChatInterface: Loading chat session for project', projectId);
+      loadChatSession(projectId);
+    } else {
+      console.log('ChatInterface: Already have session for project', projectId, 'with', currentSession.messages.length, 'messages');
+    }
+  }, [projectId, currentSessionId, sessions]); // Only reload when actually needed
 
   useEffect(() => {
     // Auto-scroll to bottom when new messages arrive
