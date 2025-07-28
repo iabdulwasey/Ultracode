@@ -21,6 +21,7 @@ interface FileState {
   // Actions
   loadProjectFiles: (projectId: string) => Promise<void>;
   updateFile: (path: string, content: string) => void;
+  updateFiles: (fileMap: Record<string, string>) => void;
   createFile: (projectId: string, path: string, content: string, type: string) => Promise<void>;
   deleteFile: (id: string) => Promise<void>;
   setCurrentFile: (path: string | null) => void;
@@ -74,6 +75,38 @@ export const useFileStore = create<FileState>((set, get) => ({
         },
       });
     }
+  },
+
+  updateFiles: (fileMap: Record<string, string>) => {
+    const existingFiles = get().files;
+    const updatedFiles = { ...existingFiles };
+    
+    // Update existing files and add new ones
+    Object.entries(fileMap).forEach(([path, content]) => {
+      if (existingFiles[path]) {
+        // Update existing file
+        updatedFiles[path] = {
+          ...existingFiles[path],
+          content,
+          size: new Blob([content]).size,
+          updatedAt: new Date(),
+        };
+      } else {
+        // Add new file (create minimal ProjectFile structure)
+        updatedFiles[path] = {
+          id: `temp-${Date.now()}-${Math.random()}`,
+          path,
+          content,
+          // Infer type from extension
+          type: path.split('.').pop() || 'text',
+          size: new Blob([content]).size,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        };
+      }
+    });
+    
+    set({ files: updatedFiles });
   },
 
   createFile: async (projectId: string, path: string, content: string, type: string) => {

@@ -3,7 +3,6 @@ import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
 import { createServer } from 'http';
-import { Server } from 'socket.io';
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -20,6 +19,8 @@ import { logger } from './utils/logger.js';
 import { connectDatabase } from './config/database.js';
 import { initializeRedis } from './config/redis.js';
 import { initializeSupabase } from './config/supabase.js';
+import { initializeWebSocket } from './services/websocket.service.js';
+import { initializeDatabaseListener } from './services/database-listener.service.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,12 +39,6 @@ console.log('Environment check:', {
 
 const app = express();
 const httpServer = createServer(app);
-const io = new Server(httpServer, {
-  cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
-    credentials: true,
-  },
-});
 
 // Middleware
 app.use(helmet());
@@ -72,24 +67,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/local-preview', localPreviewRoutes);
 app.use('/api', deploymentRoutes);
 
-// WebSocket handling
-io.on('connection', (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
-
-  socket.on('join-project', (projectId) => {
-    socket.join(`project:${projectId}`);
-    logger.info(`Socket ${socket.id} joined project ${projectId}`);
-  });
-
-  socket.on('leave-project', (projectId) => {
-    socket.leave(`project:${projectId}`);
-    logger.info(`Socket ${socket.id} left project ${projectId}`);
-  });
-
-  socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
-  });
-});
+// WebSocket service will be initialized in startServer
 
 // Error handling
 app.use(errorHandler);
@@ -108,10 +86,24 @@ async function startServer() {
     // Initialize Redis
     await initializeRedis();
     
+    // Initialize WebSocket service
+    const webSocketService = initializeWebSocket(httpServer);
+    
+    // Initialize Database listener for real-time file change detection
+    try {
+      const databaseListener = initializeDatabaseListener();
+      await databaseListener.connect();
+      logger.info('Database listener connected and monitoring file changes');
+    } catch (error) {
+      logger.warn('Database listener connection failed - hot reload features disabled');
+      logger.debug('Database listener error:', error);
+      // Continue without database listener - basic functionality still works
+    }
+    
     httpServer.listen(PORT, () => {
       logger.info(`Server running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV}`);
-      logger.info(`File sync service initialized and listening for changes`);
+      logger.info(`WebSocket service initialized and ready for real-time updates`);
     });
   } catch (error) {
     logger.error('Failed to start server:', error);
@@ -130,4 +122,4 @@ process.on('SIGTERM', () => {
   });
 });
 
-export { app, io };
+export { app, httpServer };

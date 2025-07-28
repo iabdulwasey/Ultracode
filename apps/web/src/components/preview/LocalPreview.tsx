@@ -16,6 +16,7 @@ import {
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/use-toast';
+import { useProjectSync } from '@/hooks';
 
 type DeviceType = 'desktop' | 'tablet' | 'mobile';
 type PreviewStatus = 'starting' | 'ready' | 'error' | null;
@@ -62,6 +63,35 @@ export function LocalPreview({ projectId, className }: LocalPreviewProps) {
   const [error, setError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { toast } = useToast();
+
+  // WebSocket integration for real-time preview updates
+  const {
+    isConnected,
+    buildStatus,
+    isBuilding,
+    hasError,
+    buildProgress,
+    buildMessage,
+    isPreviewReady
+  } = useProjectSync({
+    projectId,
+    onPreviewReady: () => {
+      console.log('Preview ready via WebSocket - refreshing iframe');
+      // Refresh the iframe when preview is ready
+      if (iframeRef.current && previewInfo?.url) {
+        iframeRef.current.src = iframeRef.current.src;
+      }
+    },
+    onError: (errorMessage) => {
+      console.error('Preview error via WebSocket:', errorMessage);
+      setError(errorMessage);
+      toast({
+        title: "Preview Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    }
+  });
 
   // Check for existing preview on component mount
   useEffect(() => {
@@ -274,17 +304,61 @@ export function LocalPreview({ projectId, className }: LocalPreviewProps) {
     <Card className={cn('h-full flex flex-col', className)}>
       {previewInfo?.status === 'ready' && (
         <CardHeader className="pb-3 flex-shrink-0">
-          <div className="flex items-center justify-end">
+          {/* WebSocket Build Status */}
+          {(isBuilding || hasError) && (
+            <div className={`mb-2 px-3 py-2 rounded text-sm ${
+              hasError 
+                ? 'bg-red-50 text-red-700 border border-red-200' 
+                : 'bg-blue-50 text-blue-700 border border-blue-200'
+            }`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  {isBuilding && (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  )}
+                  {hasError && (
+                    <AlertCircle className="w-4 h-4" />
+                  )}
+                  <span>{buildMessage || (hasError ? 'Build failed' : 'Building...')}</span>
+                </div>
+                {buildProgress > 0 && (
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs">{buildProgress}%</span>
+                    <div className="w-16 bg-gray-200 rounded-full h-1.5">
+                      <div 
+                        className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
+                        style={{ width: `${buildProgress}%` }}
+                      ></div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-2">
+              {/* Connection Status */}
+              <div className={`flex items-center space-x-1 text-xs ${
+                isConnected ? 'text-green-600' : 'text-gray-400'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  isConnected ? 'bg-green-500' : 'bg-gray-400'
+                }`}></div>
+                <span>{isConnected ? 'Live' : 'Offline'}</span>
+              </div>
+            </div>
+            
             <div className="flex items-center gap-1">
               {/* Rebuild button */}
               <Button
                 variant="ghost"
                 size="sm"
                 onClick={rebuildPreview}
-                disabled={isLoading}
+                disabled={isLoading || isBuilding}
                 title="Rebuild Preview"
               >
-                <RefreshCw className={cn("h-4 w-4", isLoading && "animate-spin")} />
+                <RefreshCw className={cn("h-4 w-4", (isLoading || isBuilding) && "animate-spin")} />
               </Button>
               
               <div className="w-px h-6 bg-border mx-1" />

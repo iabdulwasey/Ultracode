@@ -6,7 +6,7 @@ import { AppError } from '../middleware/errorHandler.js';
 import { authenticate } from '../middleware/auth.js';
 import { validateRequest } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
-import { io } from '../server.js';
+import { getWebSocketService } from '../services/websocket.service.js';
 
 const router = Router();
 
@@ -276,12 +276,20 @@ router.patch('/:id', validateRequest(updateProjectSchema), async (req, res, next
       throw new AppError('Project not found', 404);
     }
 
-    // Notify connected clients
-    io.to(`project:${id}`).emit('project:updated', {
-      projectId: id,
-      updates,
-      updatedBy: req.user!.sub,
-    });
+    // Notify connected clients via WebSocket
+    try {
+      const webSocketService = getWebSocketService();
+      webSocketService.broadcastToProject(id, 'files-updated', {
+        projectId: id,
+        files: [], // Will be populated by database trigger
+        userId: req.user!.sub,
+      });
+    } catch (error) {
+      // WebSocket service might not be initialized, continue without notification
+      logger.debug('WebSocket service not available for project update notification', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
 
     res.json({
       project: result.rows[0],

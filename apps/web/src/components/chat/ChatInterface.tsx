@@ -4,6 +4,7 @@ import { MessageList } from './MessageList';
 import { InputBox } from './InputBox';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { useProjectSync } from '@/hooks';
 import type { AIModel } from '@ultracode/shared';
 
 interface ChatInterfaceProps {
@@ -34,6 +35,29 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
 
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // WebSocket integration for real-time updates
+  const {
+    isConnected,
+    buildStatus,
+    isBuilding,
+    hasError,
+    buildProgress,
+    buildMessage
+  } = useProjectSync({
+    projectId,
+    onFilesUpdated: (files) => {
+      console.log('Files updated in chat interface:', files);
+      // Files are automatically synced via WebSocket
+      // The IDE and preview will be notified automatically
+    },
+    onPreviewReady: () => {
+      console.log('Preview is ready for project:', projectId);
+    },
+    onError: (errorMessage) => {
+      console.error('WebSocket error in chat:', errorMessage);
+    }
+  });
 
   useEffect(() => {
     // Only load chat session if we don't already have one for this project
@@ -134,6 +158,40 @@ export function ChatInterface({ projectId }: ChatInterfaceProps) {
       {error && (
         <div className="flex-shrink-0 px-4 py-2 bg-destructive/10 text-destructive text-sm">
           {error}
+        </div>
+      )}
+
+      {/* Build Status Indicator */}
+      {(isBuilding || hasError) && (
+        <div className={`flex-shrink-0 px-4 py-2 text-sm ${
+          hasError 
+            ? 'bg-destructive/10 text-destructive' 
+            : 'bg-blue-50 text-blue-700'
+        }`}>
+          <div className="flex items-center space-x-2">
+            {isBuilding && (
+              <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+            )}
+            <span>{buildMessage || (hasError ? 'Build failed' : 'Building...')}</span>
+            {buildProgress > 0 && (
+              <div className="flex-1 bg-gray-200 rounded-full h-2 ml-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${buildProgress}%` }}
+                ></div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Connection Status */}
+      {!isConnected && (
+        <div className="flex-shrink-0 px-4 py-1 bg-yellow-50 text-yellow-700 text-xs">
+          <div className="flex items-center space-x-1">
+            <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+            <span>Reconnecting to real-time updates...</span>
+          </div>
         </div>
       )}
 

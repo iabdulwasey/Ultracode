@@ -108,18 +108,6 @@
       "url": "http://localhost:4020",
       "status": "error"
     },
-    "f522beee-4da4-41f9-8e02-1ada01f3b50d": {
-      "projectId": "f522beee-4da4-41f9-8e02-1ada01f3b50d",
-      "port": 0,
-      "url": "",
-      "status": "error"
-    },
-    "1753fad0-95f2-4bc7-b7ba-823aee6f3149": {
-      "projectId": "1753fad0-95f2-4bc7-b7ba-823aee6f3149",
-      "port": 0,
-      "url": "",
-      "status": "error"
-    },
     "b4a4c733-af6c-48bc-91cd-73e1cf155be4": {
       "projectId": "b4a4c733-af6c-48bc-91cd-73e1cf155be4",
       "port": 4004,
@@ -136,37 +124,44 @@
       "projectId": "e5f209f8-928e-4a4d-918f-dd0be056141a",
       "port": 4022,
       "url": "http://localhost:4022",
-      "status": "ready"
+      "status": "error"
     },
     "950b2078-3ec0-46da-9d48-9fa5649f8966": {
       "projectId": "950b2078-3ec0-46da-9d48-9fa5649f8966",
       "port": 4023,
       "url": "http://localhost:4023",
-      "status": "ready"
+      "status": "error"
     },
     "4fd43243-1824-486e-a81e-d39e59d3be18": {
       "projectId": "4fd43243-1824-486e-a81e-d39e59d3be18",
       "port": 4001,
       "url": "http://localhost:4001",
-      "status": "ready"
+      "status": "error"
     },
     "9a70618e-8dde-4647-b24a-c3d5e1cd4b5b": {
       "projectId": "9a70618e-8dde-4647-b24a-c3d5e1cd4b5b",
       "port": 4024,
       "url": "http://localhost:4024",
-      "status": "ready"
+      "status": "error"
     },
     "73447f5f-87fe-4b8d-a80f-f583fc790dd3": {
       "projectId": "73447f5f-87fe-4b8d-a80f-f583fc790dd3",
       "port": 4021,
       "url": "http://localhost:4021",
-      "status": "ready"
+      "status": "error"
     },
     "c4160561-dd71-4481-859c-e97a5b5f4bf2": {
       "projectId": "c4160561-dd71-4481-859c-e97a5b5f4bf2",
       "port": 4025,
       "url": "http://localhost:4025",
-      "status": "starting"
+      "status": "error"
+    }
+  }
+}-e97a5b5f4bf2": {
+      "projectId": "c4160561-dd71-4481-859c-e97a5b5f4bf2",
+      "port": 4025,
+      "url": "http://localhost:4025",
+      "status": "error"
     }
   }
 }

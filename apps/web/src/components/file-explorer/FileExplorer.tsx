@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useFileStore } from '@/stores/fileStore';
-import { ChevronRight, ChevronDown, File, Folder } from 'lucide-react';
+import { useProjectSync } from '@/hooks';
+import { ChevronRight, ChevronDown, File, Folder, Wifi, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface FileExplorerProps {
@@ -16,9 +17,29 @@ interface FileNode {
 }
 
 export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
-  const { files, currentFile, loadProjectFiles, setCurrentFile } = useFileStore();
+  const { files, currentFile, loadProjectFiles, setCurrentFile, updateFiles } = useFileStore();
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(['src']));
   const [fileTree, setFileTree] = useState<FileNode[]>([]);
+
+  // WebSocket integration for real-time file updates
+  const { isConnected, isBuilding } = useProjectSync({
+    projectId,
+    onFilesUpdated: (updatedFiles) => {
+      console.log('FileExplorer: Files updated via WebSocket', updatedFiles);
+      
+      // Convert WebSocket file format to fileStore format
+      const fileMap: Record<string, string> = {};
+      updatedFiles.forEach(file => {
+        fileMap[file.path] = file.content;
+      });
+      
+      // Update the file store with new files
+      updateFiles(fileMap);
+    },
+    onError: (error) => {
+      console.error('FileExplorer: WebSocket error', error);
+    }
+  });
 
   useEffect(() => {
     loadProjectFiles(projectId);
@@ -138,7 +159,21 @@ export function FileExplorer({ projectId, onFileSelect }: FileExplorerProps) {
   return (
     <div className="h-full overflow-auto">
       <div className="p-2 border-b">
-        <h3 className="text-sm font-medium">Files</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-medium">Files</h3>
+          <div className="flex items-center space-x-1">
+            {isBuilding && (
+              <div className="w-3 h-3 border border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            )}
+            <div title={isConnected ? "Real-time sync active" : "Connecting..."}>
+              {isConnected ? (
+                <Wifi className="w-3 h-3 text-green-500" />
+              ) : (
+                <WifiOff className="w-3 h-3 text-gray-400" />
+              )}
+            </div>
+          </div>
+        </div>
       </div>
       <div className="py-1">
         {fileTree.length === 0 ? (

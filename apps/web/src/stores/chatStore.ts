@@ -178,10 +178,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
                   // Handle final response with files
                   if (parsed.data.files && parsed.data.files.length > 0) {
                     console.log('Generated files:', parsed.data.files);
-                    // Emit event for file updates
+                    // Emit event for file updates (legacy support)
                     window.dispatchEvent(new CustomEvent('files-generated', {
                       detail: { projectId, files: parsed.data.files }
                     }));
+                    
+                    // WebSocket integration will automatically handle the real-time updates
+                    // The database trigger will detect the file changes and broadcast via WebSocket
+                    console.log('AI generation complete - WebSocket will handle real-time sync');
                   }
                 } else if (parsed.event === 'error') {
                   throw new Error(parsed.data?.message || 'Generation failed');

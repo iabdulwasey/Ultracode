@@ -3,6 +3,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger.js';
 import { supabase } from '../config/supabase.js';
+import { getWebSocketService } from './websocket.service.js';
 
 interface ProjectFile {
   path: string;
@@ -148,9 +149,38 @@ class LocalPreviewService {
       // Only install dependencies if node_modules doesn't exist
       const nodeModulesExists = await this.checkNodeModulesExists(projectPath);
       if (!nodeModulesExists) {
+        // Broadcast build status - installing dependencies
+        try {
+          const webSocketService = getWebSocketService();
+          webSocketService.broadcastPreviewStatus(
+            projectId,
+            'building',
+            userId,
+            'Installing dependencies...',
+            50
+          );
+        } catch (error) {
+          logger.debug('WebSocket service not available for status broadcast', { error: error instanceof Error ? error.message : String(error) });
+        }
+
         await this.installDependencies(projectPath);
       } else {
         logger.info('Dependencies already installed, skipping npm install', { projectId });
+      }
+
+      // Broadcast build status - starting server
+      try {
+        const webSocketService = getWebSocketService();
+        webSocketService.broadcastPreviewStatus(
+          projectId,
+          'building',
+          userId,
+          'Starting development server...',
+          80
+        );
+      } catch (error) {
+        // WebSocket service might not be initialized yet, continue without broadcasting
+        logger.debug('WebSocket service not available for status broadcast', { error: error instanceof Error ? error.message : String(error) });
       }
 
       // Create Vite dev server
@@ -158,6 +188,21 @@ class LocalPreviewService {
       
       previewInfo.server = server;
       previewInfo.status = 'ready';
+
+      // Broadcast build status - ready
+      try {
+        const webSocketService = getWebSocketService();
+        webSocketService.broadcastPreviewStatus(
+          projectId,
+          'ready',
+          userId,
+          'Preview ready for development',
+          100
+        );
+      } catch (error) {
+        // WebSocket service might not be initialized yet, continue without broadcasting
+        logger.debug('WebSocket service not available for status broadcast', { error: error instanceof Error ? error.message : String(error) });
+      }
 
       logger.info('Local preview created successfully', { 
         projectId, 
@@ -172,6 +217,20 @@ class LocalPreviewService {
         projectId, 
         error: error.message 
       });
+
+      // Broadcast error status
+      try {
+        const webSocketService = getWebSocketService();
+        webSocketService.broadcastPreviewStatus(
+          projectId,
+          'error',
+          userId,
+          `Preview creation failed: ${error.message}`
+        );
+      } catch (wsError) {
+        // WebSocket service might not be initialized yet
+        logger.debug('WebSocket service not available for error broadcast', { error: wsError instanceof Error ? wsError.message : String(wsError) });
+      }
 
       // Update status to error
       const errorInfo: LocalPreviewInfo = {
