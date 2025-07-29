@@ -382,6 +382,9 @@ class LocalPreviewService {
     // Step 3: Sync all updated files back to Supabase
     await this.syncFilesToSupabase(projectPath, updatedFilePaths);
     
+    // Step 4: Broadcast file updates via WebSocket  
+    await this.broadcastFileUpdates(projectPath, parsedFiles);
+    
     logger.info('Incremental file update completed', { 
       projectPath, 
       aiModifiedFiles: parsedFiles.length,
@@ -640,12 +643,12 @@ export default {
             .from('project_files')
             .upsert({
               project_id: projectId,
-              file_path: file.path,
+              path: file.path,
               content: file.content,
-              file_type: file.type,
+              type: file.type,
               updated_at: new Date().toISOString()
             }, {
-              onConflict: 'project_id,file_path'
+              onConflict: 'project_id,path'
             });
 
           if (error) {
@@ -669,6 +672,38 @@ export default {
       }
     } catch (error) {
       logger.error('Failed to sync files to Supabase', { projectId, error });
+    }
+  }
+
+  /**
+   * Broadcast file updates to connected clients via WebSocket
+   */
+  private async broadcastFileUpdates(projectPath: string, updatedFiles: ProjectFile[]): Promise<void> {
+    if (updatedFiles.length === 0) {
+      return;
+    }
+
+    const projectId = path.basename(projectPath);
+    
+    try {
+      const webSocketService = getWebSocketService();
+      
+      // Broadcast file update event with proper format
+      webSocketService.broadcastToProject(projectId, 'files-updated', {
+        projectId,
+        files: updatedFiles,
+        userId: 'system' // Since this is from AI generation
+      });
+      
+      logger.info('Broadcasted file updates via WebSocket', { 
+        projectId, 
+        fileCount: updatedFiles.length 
+      });
+      
+    } catch (error) {
+      logger.debug('WebSocket service not available for file update broadcast', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
     }
   }
 

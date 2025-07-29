@@ -169,7 +169,7 @@ class ApiClient {
         options: context ? {
           model: context.model || 'claude-sonnet-4-20250514',
           temperature: context.temperature || 0.7,
-          maxTokens: context.maxTokens || 32000,
+          maxTokens: context.maxTokens || 64000,
         } : undefined,
       }),
     });

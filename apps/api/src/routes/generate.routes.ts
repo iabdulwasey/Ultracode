@@ -57,7 +57,7 @@ const generateSchema = z.object({
     options: z.object({
       model: z.enum(['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'gpt-4o', 'gpt-4-turbo']).default('claude-sonnet-4-20250514'),
       temperature: z.number().min(0).max(1).default(0.7),
-      maxTokens: z.number().min(100).max(32000).default(32000),
+      maxTokens: z.number().min(100).max(64000).default(64000),
     }).optional(),
   }),
 });
@@ -122,11 +122,15 @@ STRICT MODIFICATION RULES:
 11. PRESERVE all existing onClick handlers, state, and props
 12. If user asks for "add a button", add it alongside existing buttons, don't replace them
 13. NEVER change existing component layouts (grid, flex, positioning) unless specifically requested
+14. READ the existing file content carefully before making any modifications
+15. PRESERVE all existing text content, styling, and functionality when making changes
+16. Only modify the specific parts mentioned in the user request
+17. When changing content like "Japan" to "Nepal", ONLY change that specific text, keep everything else identical
 
 CHANGE VALIDATION:
-14. Before modifying any existing file, ask yourself: "Is this change absolutely necessary?"
-15. Default to creating new components rather than modifying existing ones
-16. Maintain consistency with existing code style and patterns
+18. Before modifying any existing file, ask yourself: "Is this change absolutely necessary?"
+19. Default to creating new components rather than modifying existing ones
+20. Maintain consistency with existing code style and patterns
 
 Technology Stack (maintain existing):
 - React 18+ with TypeScript
@@ -156,7 +160,15 @@ Guidelines for Updates:
 
 ${context?.currentFile ? `Context - Current file: ${context.currentFile}` : ''}
 ${context?.selectedCode ? `Context - Selected code:\n${context.selectedCode}` : ''}
-${context?.fileTree ? `Context - Existing files:\n${Object.keys(context.fileTree).join('\n')}` : ''}
+${context?.fileTree ? `
+EXISTING PROJECT FILES (for context and targeted modifications):
+${Object.entries(context.fileTree).map(([path, content]) => `
+=== FILE: ${path} ===
+${content}
+=== END FILE: ${path} ===
+`).join('\n')}
+
+IMPORTANT: When modifying existing files, PRESERVE existing content and make ONLY the requested changes. Do not rewrite entire components unless explicitly asked.` : ''}
 
 Remember: Make targeted updates to achieve the user's specific request without breaking existing functionality!`;
   }
@@ -526,7 +538,7 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
         },
       ],
       temperature: options.temperature || 0.7,
-      max_tokens: options.maxTokens || 32000,
+      max_tokens: options.maxTokens || 64000,
       stream: true,
     });
 
@@ -562,7 +574,31 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     const files = extractFilesFromContent(fullContent);
     
     // Validate that all imported components have corresponding files
-    validateGeneratedFiles(files);
+    const validationResult = validateGeneratedFiles(files);
+    let finalFiles = validationResult.files;
+
+    // Auto-retry if components are missing
+    if (validationResult.missingComponents && validationResult.missingComponents.length > 0) {
+      logger.info('Auto-generating missing components', { 
+        missingComponents: validationResult.missingComponents 
+      });
+
+      // Generate missing components
+      const missingComponentsContent = await generateMissingComponents(
+        validationResult.missingComponents, 
+        files,
+        options,
+        systemPrompt,
+        prompt
+      );
+
+      if (missingComponentsContent && missingComponentsContent.length > 0) {
+        finalFiles = [...finalFiles, ...missingComponentsContent];
+        logger.info('Successfully generated missing components', { 
+          generatedCount: missingComponentsContent.length 
+        });
+      }
+    }
 
     // Save generation to database
     // Transaction handling is managed by Supabase
@@ -570,17 +606,17 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     // Chat session management is handled by Supabase directly in the frontend
 
     // Save files to Supabase
-    if (files.length > 0) {
-      logger.info(`Saving ${files.length} files to database`, { 
+    if (finalFiles.length > 0) {
+      logger.info(`Saving ${finalFiles.length} files to database`, { 
         projectId, 
         mode: hasExistingFiles ? 'incremental' : 'full',
-        files: files.map(f => f.path)
+        files: finalFiles.map(f => f.path)
       });
 
       const { error } = await supabase
         .from('project_files')
         .upsert(
-          files.map(file => ({
+          finalFiles.map(file => ({
             project_id: projectId,
             path: file.path,
             content: file.content,
@@ -682,12 +718,12 @@ router.post('/explain', validateRequest(z.object({
 });
 
 // Helper function to validate that all imported components have corresponding files
-function validateGeneratedFiles(files: Array<{ path: string; content: string; type: string }>): void {
+function validateGeneratedFiles(files: Array<{ path: string; content: string; type: string }>): { missingComponents?: string[]; files: Array<{ path: string; content: string; type: string }> } {
   // Find App.tsx file
   const appFile = files.find(f => f.path === 'src/App.tsx' || f.path === 'App.tsx');
   if (!appFile) {
     logger.warn('No App.tsx found in generated files');
-    return;
+    return { files };
   }
 
   // Extract import statements from App.tsx
@@ -715,22 +751,22 @@ function validateGeneratedFiles(files: Array<{ path: string; content: string; ty
   }
 
   if (missingComponents.length > 0) {
-    logger.error('Missing component files detected', {
+    logger.warn('Missing component files detected - will save partial generation and auto-retry', {
       imports,
       componentFiles: componentFiles.map(f => f.path),
       missingComponents
     });
-    throw new AppError(
-      `Generated code is incomplete. Missing component files: ${missingComponents.join(', ')}. ` +
-      'Please regenerate with a more specific prompt.',
-      400
-    );
+    
+    // Return the missing components so we can auto-generate them
+    return { missingComponents, files };
   }
 
   logger.info('Component validation passed', {
     imports,
     componentFiles: componentFiles.map(f => f.path)
   });
+
+  return { files };
 }
 
 // Helper function to extract files from generated content
@@ -781,6 +817,110 @@ function getFileType(filePath: string): string {
       return 'markdown';
     default:
       return 'text';
+  }
+}
+
+// Helper function to generate missing components using incremental update pattern
+async function generateMissingComponents(
+  missingComponents: string[], 
+  existingFiles: Array<{ path: string; content: string; type: string }>,
+  options: any,
+  systemPrompt: string,
+  originalPrompt: string
+): Promise<Array<{ path: string; content: string; type: string }> | null> {
+  try {
+    logger.info('Generating missing components using incremental pattern', { 
+      count: missingComponents.length,
+      components: missingComponents 
+    });
+
+    // Create fileTree context like incremental mode
+    const fileTree = existingFiles.reduce((acc: Record<string, string>, file) => {
+      acc[file.path] = file.content;
+      return acc;
+    }, {});
+
+    // Create enhanced context like incremental mode  
+    const enhancedContext = {
+      fileTree,
+      existingFiles: true
+    };
+
+    // Use incremental system prompt with file context
+    const incrementalSystemPrompt = getSystemPrompt(enhancedContext, true);
+
+    // Create focused prompt for missing components
+    const missingComponentPrompt = `Complete the React application by generating the missing components that are imported but not yet created.
+
+Missing components that need to be generated:
+${missingComponents.map(comp => `- ${comp}.tsx`).join('\n')}
+
+Original user request context: "${originalPrompt}"
+
+Requirements:
+- Generate ONLY the missing components listed above
+- Follow the EXACT same patterns, styling, and structure as existing components
+- Maintain consistency with the design system already established
+- Use the same Tailwind CSS approach and component architecture
+- Each component should fit seamlessly into the existing application
+
+Generate each missing component using this EXACT format:
+
+\`\`\`typescript src/components/ComponentName.tsx
+// Component code here
+\`\`\``;
+
+    // Use anthropic with null check
+    if (!anthropic) {
+      throw new Error('Anthropic client not initialized');
+    }
+
+    // Use the same streaming approach as incremental updates
+    const stream = await anthropic.messages.create({
+      model: options.model || 'claude-sonnet-4-20250514',
+      max_tokens: 24000,
+      messages: [
+        {
+          role: 'user',
+          content: `${incrementalSystemPrompt}\n\n${missingComponentPrompt}`
+        }
+      ],
+      temperature: options.temperature || 0.7,
+      stream: true,
+    });
+
+    let generatedContent = '';
+    for await (const chunk of stream) {
+      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
+        generatedContent += chunk.delta.text;
+      }
+    }
+
+    // Parse the generated components
+    const generatedFiles = extractFilesFromContent(generatedContent);
+    
+    // Filter to only include the requested missing components
+    const expectedFiles = generatedFiles.filter(file => 
+      missingComponents.some(component => 
+        file.path.includes(`${component}.tsx`) || file.path.includes(`${component}.js`)
+      )
+    );
+    
+    logger.info('Generated missing components with context', { 
+      requestedCount: missingComponents.length,
+      generatedCount: generatedFiles.length,
+      expectedCount: expectedFiles.length,
+      generatedFiles: generatedFiles.map(f => f.path)
+    });
+
+    return expectedFiles.length > 0 ? expectedFiles : generatedFiles;
+
+  } catch (error) {
+    logger.error('Failed to generate missing components', { 
+      missingComponents, 
+      error: error instanceof Error ? error.message : String(error) 
+    });
+    return null;
   }
 }
 

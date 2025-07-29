@@ -126,8 +126,32 @@ class WebSocketService {
       console.log('Joined project room:', data.projectId);
     });
 
-    socket.on('auth-error', (data: { message: string }) => {
-      console.error('WebSocket authentication error:', data.message);
+    socket.on('auth-error', async (data: { message: string; code?: string }) => {
+      console.warn('WebSocket authentication error:', data.message);
+      
+      // If auth failed due to expired token, try to refresh and reconnect
+      if (data.code === 'bad_jwt' || data.code === 'auth_failed') {
+        try {
+          console.log('Attempting to refresh session and reconnect...');
+          
+          // Refresh the session to get a new token
+          const { data: { session }, error } = await supabase.auth.refreshSession();
+          
+          if (!error && session?.access_token) {
+            // Retry authentication with fresh token
+            console.log('Retrying authentication with refreshed token');
+            socket.emit('authenticate', {
+              token: session.access_token,
+              projectId: this.currentProjectId
+            });
+          } else {
+            console.error('Failed to refresh session:', error);
+            // Could redirect to login here if needed
+          }
+        } catch (error) {
+          console.error('Error refreshing session:', error);
+        }
+      }
     });
 
     socket.on('error', (data: { message: string }) => {

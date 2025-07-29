@@ -88,11 +88,24 @@ export class WebSocketService {
       socket.on('authenticate', async (data: { token: string; projectId?: string }) => {
         try {
           // Verify user with Supabase
+          if (!supabase) {
+            throw new Error('Supabase client not initialized');
+          }
+          
           const { data: { user }, error } = await supabase.auth.getUser(data.token);
           
           if (error || !user) {
-            logger.warn('WebSocket authentication failed', { socketId: socket.id, error });
-            socket.emit('auth-error', { message: 'Authentication failed' });
+            // Log the error but don't immediately fail - token might be expired
+            logger.debug('WebSocket authentication failed, token may be expired', { 
+              socketId: socket.id, 
+              error: error?.code || 'unknown_error'
+            });
+            
+            // Send auth error but don't return immediately
+            socket.emit('auth-error', { 
+              message: 'Authentication failed - please refresh your session',
+              code: error?.code || 'auth_failed'
+            });
             return;
           }
 
