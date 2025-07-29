@@ -1,3 +1,10 @@
 {
-  "activeServers": {}
+  "activeServers": {
+    "422d8848-55ba-40be-ac63-a733e0058c0f": {
+      "projectId": "422d8848-55ba-40be-ac63-a733e0058c0f",
+      "port": 4000,
+      "url": "http://localhost:4000",
+      "status": "starting"
+    }
+  }
 }

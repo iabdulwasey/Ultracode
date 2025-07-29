@@ -357,6 +357,9 @@ class LocalPreviewService {
       filesList: files.map(f => f.path)
     });
 
+    // Broadcast building status
+    await this.broadcastPreviewStatus(projectPath, 'building', 'Updating preview with generated code...');
+
     // Parse files from AI-generated content
     const parsedFiles = this.parseGeneratedFiles(files);
     
@@ -384,6 +387,9 @@ class LocalPreviewService {
     
     // Step 4: Broadcast file updates via WebSocket  
     await this.broadcastFileUpdates(projectPath, parsedFiles);
+    
+    // Step 5: Broadcast preview ready status
+    await this.broadcastPreviewStatus(projectPath, 'ready');
     
     logger.info('Incremental file update completed', { 
       projectPath, 
@@ -702,6 +708,35 @@ export default {
       
     } catch (error) {
       logger.debug('WebSocket service not available for file update broadcast', { 
+        error: error instanceof Error ? error.message : String(error) 
+      });
+    }
+  }
+
+  /**
+   * Broadcast preview status update via WebSocket
+   */
+  private async broadcastPreviewStatus(projectPath: string, status: 'building' | 'ready' | 'error', message?: string): Promise<void> {
+    const projectId = path.basename(projectPath);
+    
+    try {
+      const webSocketService = getWebSocketService();
+      
+      // Broadcast preview status event
+      webSocketService.broadcastToProject(projectId, 'preview-rebuild', {
+        projectId,
+        status,
+        message: message || (status === 'ready' ? 'Preview updated successfully' : 'Preview is building...'),
+        progress: status === 'ready' ? 100 : (status === 'building' ? 50 : 0)
+      });
+      
+      logger.info('Broadcasted preview status via WebSocket', { 
+        projectId, 
+        status,
+        message 
+      });
+    } catch (error) {
+      logger.debug('WebSocket service not available for preview status broadcast', { 
         error: error instanceof Error ? error.message : String(error) 
       });
     }
