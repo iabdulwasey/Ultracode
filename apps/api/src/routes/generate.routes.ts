@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import Anthropic from '@anthropic-ai/sdk';
 import { supabase } from '../config/supabase.js';
 import { getRedis } from '../config/redis.js';
 import { AppError } from '../middleware/errorHandler.js';
@@ -10,22 +9,23 @@ import { validateRequest } from '../utils/validation.js';
 import { logger } from '../utils/logger.js';
 import { getWebSocketService } from '../services/websocket.service.js';
 import { localPreviewService } from '../services/localPreview.service.js';
+import { backgroundPersistenceService } from '../services/backgroundPersistence.service.js';
+import { editIntentAnalyzer } from '../services/editIntentAnalyzer.js';
+import { fileSearchService } from '../services/fileSearchService.js';
+import { conversationManager } from '../services/conversationManager.js';
+import { conversationIntelligence } from '../services/conversationIntelligence.js';
+import { enhancedResponseParser } from '../services/enhancedResponseParser.js';
+import { autoCompleteService } from '../services/autoCompleteService.js';
+import { fileAnalysisEngine } from '../services/fileAnalysisEngine.js';
+import { packageDetectionService } from '../services/packageDetectionService.js';
+import { xmlPackageManager } from '../services/xmlPackageManager.js';
+import { streamingPackageInstaller } from '../services/streamingPackageInstaller.js';
+import { aiProviderManager } from '../services/aiProviderManager.js';
+import { appConfig } from '../config/app.config.js';
 
 const router = Router();
 
-// Initialize Anthropic client lazily
-let anthropic: Anthropic | null = null;
-
-const getAnthropic = () => {
-  if (!anthropic) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new AppError('Anthropic API key not configured', 500);
-    }
-    anthropic = new Anthropic({ apiKey });
-  }
-  return anthropic;
-};
+// AI Provider Manager handles all AI clients
 
 // Debug middleware to log all requests
 router.use((req, res, next) => {
@@ -55,9 +55,9 @@ const generateSchema = z.object({
       fileTree: z.record(z.any()).optional(),
     }).optional(),
     options: z.object({
-      model: z.enum(['claude-sonnet-4-20250514', 'claude-opus-4-20250514', 'gpt-4o', 'gpt-4-turbo']).default('claude-sonnet-4-20250514'),
+      model: z.string().default(appConfig.ai.defaultModel), // Dynamic model validation
       temperature: z.number().min(0).max(1).default(0.7),
-      maxTokens: z.number().min(100).max(64000).default(64000),
+      maxTokens: z.number().min(100).max(64000).default(8000),
     }).optional(),
   }),
 });
@@ -98,8 +98,8 @@ const deductCredits = async (userId: string, amount: number = 1) => {
   }
 };
 
-// Generate system prompt
-const getSystemPrompt = (context?: any, hasExistingFiles?: boolean) => {
+// Generate system prompt with conversation context
+const getSystemPrompt = (context?: any, hasExistingFiles?: boolean, conversationContext?: any) => {
   if (hasExistingFiles) {
     // Incremental update mode
     return `You are Ultracode, an AI assistant that makes precise, incremental updates to existing React applications.
@@ -161,14 +161,68 @@ Guidelines for Updates:
 ${context?.currentFile ? `Context - Current file: ${context.currentFile}` : ''}
 ${context?.selectedCode ? `Context - Selected code:\n${context.selectedCode}` : ''}
 ${context?.fileTree ? `
-EXISTING PROJECT FILES (for context and targeted modifications):
+TARGETED FILES FOR SURGICAL EDITING:
 ${Object.entries(context.fileTree).map(([path, content]) => `
 === FILE: ${path} ===
 ${content}
 === END FILE: ${path} ===
 `).join('\n')}
 
-IMPORTANT: When modifying existing files, PRESERVE existing content and make ONLY the requested changes. Do not rewrite entire components unless explicitly asked.` : ''}
+${context.searchResults ? `
+EXACT LOCATIONS FOUND BY SEARCH:
+${context.searchResults}
+
+SURGICAL EDITING INSTRUCTIONS:
+- Target the exact lines identified by the search results
+- Make MINIMAL changes to achieve the user's request
+- Preserve all surrounding code and structure
+` : ''}
+
+${context.editIntent ? `
+EDIT INTENT ANALYSIS:
+- Type: ${context.editIntent.type}
+- Target Files: ${context.editIntent.targetFiles.join(', ')}
+- Confidence: ${Math.round(context.editIntent.confidence * 100)}%
+- Description: ${context.editIntent.description}
+
+PRECISION REQUIREMENTS:
+- Focus ONLY on the identified target files
+- Make surgical changes as indicated by the search results
+- Preserve all existing functionality and structure
+` : ''}
+
+IMPORTANT: This is SURGICAL EDITING - make ONLY the necessary changes to the specific locations identified. Do not rewrite entire components unless explicitly required.` : ''}
+
+${conversationContext ? `
+## 💭 CONVERSATION MEMORY & USER PREFERENCES
+
+### User Learning Profile:
+- **Edit Style Preference**: ${conversationContext.userPreferences?.editStyle || 'targeted'}
+- **Preferred Components**: ${conversationContext.userPreferences?.preferredComponents?.slice(0, 5).join(', ') || 'None learned yet'}
+- **Successful Edit Types**: ${Object.keys(conversationContext.userPreferences?.successfulEditTypes || {}).slice(0, 3).join(', ') || 'Learning...'}
+- **Average Token Usage**: ${conversationContext.userPreferences?.averageTokenUsage || 1000} tokens
+
+### Recent Context (last 3 messages):
+${conversationContext.recentMessages?.slice(-3).map((msg: any, i: number) => 
+  `${i + 1}. ${msg.role.toUpperCase()}: ${msg.content.substring(0, 200)}${msg.content.length > 200 ? '...' : ''}`
+).join('\n') || 'No recent messages'}
+
+### Project Evolution:
+- **Recently Created Files**: ${conversationContext.projectEvolution?.recentlyCreatedFiles?.slice(-5).join(', ') || 'None'}
+- **Major Changes**: ${conversationContext.projectEvolution?.majorChanges?.slice(-2).map((change: any) => change.description).join(', ') || 'None'}
+
+### Session Statistics:
+- **Total Messages**: ${conversationContext.sessionStats?.totalMessages || 0}
+- **Successful Edits**: ${conversationContext.sessionStats?.successfulEdits || 0}/${conversationContext.sessionStats?.totalEdits || 0}
+- **Average Confidence**: ${Math.round((conversationContext.sessionStats?.averageConfidence || 0) * 100)}%
+
+ADAPTATION RULES:
+1. **Respect User Preferences**: Use ${conversationContext.userPreferences?.editStyle || 'targeted'} editing approach
+2. **Avoid Duplicates**: Don't recreate recently created files unless explicitly requested
+3. **Build on Context**: Reference previous successful patterns and approaches
+4. **Maintain Consistency**: Follow established patterns from this conversation
+5. **Token Optimization**: Aim for ~${conversationContext.userPreferences?.averageTokenUsage || 1000} tokens based on user's typical usage
+` : ''}
 
 Remember: Make targeted updates to achieve the user's specific request without breaking existing functionality!`;
   }
@@ -497,31 +551,97 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
     // Check credits
     await checkCredits(userId);
 
-    // Check for existing files to determine generation mode
-    const { data: existingFiles, error: filesError } = await supabase
-      .from('project_files')
-      .select('path, content')
-      .eq('project_id', projectId);
+    // PHASE 3: Initialize conversation memory system
+    await conversationManager.initializeConversation(projectId, userId);
+    
+    // Add user message to conversation
+    await conversationManager.addUserMessage(projectId, userId, prompt);
+    
+    // Update conversation topic
+    await conversationManager.updateCurrentTopic(projectId, userId, prompt);
 
-    const hasExistingFiles = !filesError && existingFiles && existingFiles.length > 0;
+    // CONTAINER-FIRST: Check for existing files directly from container filesystem
+    const hasExistingFiles = await localPreviewService.hasExistingFiles(projectId);
     const fileTree = hasExistingFiles ? 
-      existingFiles.reduce((acc: Record<string, string>, file) => {
-        acc[file.path] = file.content;
-        return acc;
-      }, {}) : {};
+      await localPreviewService.getFileTree(projectId) : {};
 
     logger.info('Generation mode determined', {
       projectId,
       hasExistingFiles,
-      existingFileCount: existingFiles?.length || 0,
+      fileTreeKeys: Object.keys(fileTree).length,
       mode: hasExistingFiles ? 'incremental update' : 'full generation'
     });
 
-    // Enhance context with existing files
+    // AGENTIC SURGICAL EDIT SYSTEM: Analyze edit intent and target files
+    let editIntent;
+    let searchResults;
+    let targetedFileTree: Record<string, string> = {};
+    
+    if (hasExistingFiles) {
+      // Phase 2: Analyze edit intent for surgical precision
+      editIntent = editIntentAnalyzer.analyzePrompt(prompt, fileTree);
+      
+      logger.info('Edit intent analysis', {
+        type: editIntent.type,
+        targetFiles: editIntent.targetFiles,
+        confidence: editIntent.confidence,
+        searchTerms: editIntent.searchTerms
+      });
+      
+      // Execute search plan to find exact locations
+      if (editIntent.searchTerms.length > 0) {
+        const searchPlan = fileSearchService.createSearchPlan(
+          prompt,
+          editIntent.type,
+          editIntent.searchTerms
+        );
+        
+        const searchExecution = fileSearchService.executeSearchPlan(searchPlan, fileTree);
+        searchResults = searchExecution.results;
+        
+        logger.info('File search results', {
+          success: searchExecution.success,
+          resultsFound: searchResults.length,
+          filesSearched: searchExecution.filesSearched
+        });
+      }
+      
+      // Build targeted file tree (only relevant files)
+      const relevantFiles = new Set([
+        ...editIntent.targetFiles,
+        ...editIntent.suggestedContext.slice(0, 2) // Limit context to avoid overwhelming AI
+      ]);
+      
+      for (const filePath of relevantFiles) {
+        if (fileTree[filePath]) {
+          targetedFileTree[filePath] = fileTree[filePath];
+        }
+      }
+      
+      logger.info('Targeted file selection', {
+        totalFiles: Object.keys(fileTree).length,
+        targetedFiles: Object.keys(targetedFileTree).length,
+        tokenReduction: Math.round((1 - Object.keys(targetedFileTree).length / Object.keys(fileTree).length) * 100)
+      });
+    }
+
+    // PHASE 3: Get conversation context for AI prompts
+    const conversationContext = await conversationManager.getOptimizedContext(projectId, userId);
+
+    // PHASE 5: Initialize XML package detection session
+    const packageDetectionSession = await packageDetectionService.initializeDetectionSession(
+      projectId,
+      userId,
+      `gen_session_${Date.now()}`
+    );
+
+    // Enhance context with surgical editing information AND conversation memory
     const enhancedContext = {
       ...context,
-      fileTree: hasExistingFiles ? fileTree : undefined,
-      existingFiles: hasExistingFiles
+      fileTree: hasExistingFiles ? targetedFileTree : undefined, // Use targeted files only
+      existingFiles: hasExistingFiles,
+      editIntent: editIntent || undefined,
+      searchResults: searchResults ? fileSearchService.formatSearchResultsForAI(searchResults) : undefined
     };
 
     // Check cache (include file state in cache key)
@@ -541,76 +661,311 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
       'Connection': 'keep-alive',
     });
 
-    // Create message with Anthropic
-    const systemPrompt = getSystemPrompt(enhancedContext, hasExistingFiles);
-    const stream = await getAnthropic().messages.create({
-      model: options.model || 'claude-sonnet-4-20250514',
-      messages: [
-        { 
-          role: 'user', 
-          content: `${systemPrompt}\n\nUser request: ${prompt}` 
-        },
-      ],
+    // PHASE 7: Enhanced streaming architecture with progress feedback
+    const encoder = new TextEncoder();
+    
+    // Function to send progress updates (like Open-Lovable)
+    const sendProgress = async (data: any) => {
+      const message = `data: ${JSON.stringify(data)}\n\n`;
+      res.write(message);
+    };
+
+    // Send initial status
+    await sendProgress({ type: 'status', message: 'Initializing AI...' });
+
+    // Create message with AI Provider Manager (including conversation context)
+    const systemPrompt = getSystemPrompt(enhancedContext, hasExistingFiles, conversationContext);
+    
+    // Validate model is available
+    const selectedModel = options.model || appConfig.ai.defaultModel;
+    const availableModels = aiProviderManager.getAvailableModels();
+    
+    if (!availableModels.includes(selectedModel)) {
+      logger.warn(`Requested model ${selectedModel} not available, using default`);
+      // Use default model from first available provider
+      if (availableModels.length === 0) {
+        throw new AppError('No AI providers available', 503);
+      }
+      await sendProgress({ 
+        type: 'warning', 
+        message: `Model ${selectedModel} unavailable, using fallback` 
+      });
+    }
+
+    // Send status based on generation mode
+    if (hasExistingFiles) {
+      if (editIntent) {
+        await sendProgress({ 
+          type: 'status', 
+          message: `🔍 Analyzing ${editIntent.type.toLowerCase().replace('_', ' ')}...` 
+        });
+        
+        if (searchResults && searchResults.length > 0) {
+          await sendProgress({ 
+            type: 'status', 
+            message: `✅ Found code in ${editIntent.targetFiles.length} file(s)` 
+          });
+        }
+      } else {
+        await sendProgress({ type: 'status', message: '🔧 Preparing incremental update...' });
+      }
+    } else {
+      await sendProgress({ type: 'status', message: '🎨 Planning application structure...' });
+    }
+    
+    // Use AI Provider Manager with fallback support
+    const response = await aiProviderManager.generateWithFallback([
+      {
+        role: 'system',
+        content: systemPrompt
+      },
+      { 
+        role: 'user', 
+        content: prompt 
+      },
+    ], {
+      model: selectedModel,
       temperature: options.temperature || 0.7,
-      max_tokens: options.maxTokens || 64000,
-      stream: true,
+      maxTokens: options.maxTokens || 8000,
+      stream: true
     });
 
     let fullContent = '';
     let tokenCount = 0;
 
-    // Stream response
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        const content = chunk.delta.text;
-        fullContent += content;
-        tokenCount += 1; // Approximate
+    // PHASE 7: Enhanced streaming with real-time progress tracking
+    if (response.stream) {
+      // AI SDK streaming format - unified across all providers
+      const stream = response.stream as ReadableStream<string>;
+      const reader = stream.getReader();
+      
+      // Enhanced streaming variables for progress tracking
+      let currentFile = '';
+      let currentFilePath = '';
+      let componentCount = 0;
+      let isInFile = false;
+      let isInTag = false;
+      let conversationalBuffer = '';
+      let tagBuffer = '';
+      
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          if (value) {
+            fullContent += value;
+            currentFile += value;
+            tokenCount += 1; // Approximate
 
-        // Send chunk to client
-        res.write(`data: ${JSON.stringify({
-          event: 'chunk',
-          data: { content },
-        })}\n\n`);
+            // Combine with buffer for tag detection
+            const searchText = tagBuffer + value;
 
-        // Also send to WebSocket for real-time collaboration
-        try {
-          const webSocketService = getWebSocketService();
-          // The chunk content will be handled by the SSE stream above
-          // WebSocket will handle file updates when generation completes
-        } catch (error) {
-          // WebSocket service might not be initialized, continue without notification
-          logger.debug('WebSocket service not available for chunk notification');
+            // Check if we're entering or leaving a tag
+            const hasOpenTag = /<(file|package|packages|explanation|command|structure|template)\b/.test(value);
+            const hasCloseTag = /<\/(file|package|packages|explanation|command|structure|template)>/.test(value);
+            
+            if (hasOpenTag) {
+              // Send any buffered conversational text before the tag
+              if (conversationalBuffer.trim() && !isInTag) {
+                await sendProgress({ 
+                  type: 'conversation', 
+                  text: conversationalBuffer.trim()
+                });
+                conversationalBuffer = '';
+              }
+              isInTag = true;
+            }
+            
+            if (hasCloseTag) {
+              isInTag = false;
+            }
+            
+            // If we're not in a tag, buffer as conversational text
+            if (!isInTag && !hasOpenTag) {
+              conversationalBuffer += value;
+            }
+
+            // PHASE 5: Process chunk for XML package detection
+            try {
+              await packageDetectionService.processAIStreamChunk(
+                packageDetectionSession.sessionId,
+                value
+              );
+            } catch (error) {
+              logger.warn('Package detection failed for chunk', { 
+                projectId, 
+                error: error instanceof Error ? error.message : String(error) 
+              });
+            }
+
+            // Check for file boundaries and send progress updates
+            if (value.includes('<file path="')) {
+              const pathMatch = value.match(/<file path="([^"]+)"/);
+              if (pathMatch) {
+                currentFilePath = pathMatch[1];
+                isInFile = true;
+                currentFile = value;
+                
+                // Send file start progress
+                await sendProgress({
+                  type: 'file_start',
+                  path: currentFilePath,
+                  message: `Creating ${currentFilePath.split('/').pop()}`
+                });
+              }
+            }
+            
+            // Check for file end
+            if (isInFile && currentFile.includes('</file>')) {
+              isInFile = false;
+              
+              // Send component progress update
+              if (currentFilePath.includes('components/')) {
+                componentCount++;
+                const componentName = currentFilePath.split('/').pop()?.replace(/\.(jsx|tsx)$/, '') || 'Component';
+                await sendProgress({ 
+                  type: 'component', 
+                  name: componentName,
+                  path: currentFilePath,
+                  index: componentCount
+                });
+              } else if (currentFilePath.includes('App.')) {
+                await sendProgress({ 
+                  type: 'app', 
+                  message: 'Generated main App component',
+                  path: currentFilePath
+                });
+              } else if (currentFilePath.includes('index.css')) {
+                await sendProgress({ 
+                  type: 'styles', 
+                  message: 'Created base styles',
+                  path: currentFilePath
+                });
+              } else if (currentFilePath.includes('.json')) {
+                await sendProgress({ 
+                  type: 'config', 
+                  message: 'Generated configuration',
+                  path: currentFilePath
+                });
+              }
+              
+              currentFile = '';
+              currentFilePath = '';
+            }
+
+            // Stream the raw text for live preview
+            await sendProgress({ 
+              type: 'stream', 
+              text: value,
+              raw: true 
+            });
+
+            // Keep unmatched portion in buffer for next iteration
+            const lastIndex = Math.max(0, searchText.length - 50);
+            tagBuffer = searchText.substring(lastIndex);
+          }
         }
+        
+        // Send any remaining conversational text
+        if (conversationalBuffer.trim()) {
+          await sendProgress({ 
+            type: 'conversation', 
+            text: conversationalBuffer.trim()
+          });
+        }
+        
+      } finally {
+        reader.releaseLock();
       }
+    } else {
+      // Non-streaming response
+      fullContent = response.content;
+      tokenCount = response.usage?.totalTokens || 0;
     }
 
-    // Parse generated code and extract files
-    const files = extractFilesFromContent(fullContent);
+    // PHASE 4: Enhanced parsing with duplicate handling and validation
+    const parsedResponse = enhancedResponseParser.parseAIResponse(fullContent);
+    const files = parsedResponse.files;
+    
+    // Log parsing warnings if any
+    if (parsedResponse.warnings.length > 0) {
+      logger.warn('AI response parsing warnings', {
+        projectId,
+        warnings: parsedResponse.warnings
+      });
+    }
+    
+    // Log parsing errors if any
+    if (parsedResponse.errors.length > 0) {
+      logger.error('AI response parsing errors', {
+        projectId,
+        errors: parsedResponse.errors
+      });
+    }
+    
+    // PHASE 3: Add assistant message to conversation
+    await conversationManager.addAssistantMessage(projectId, userId, fullContent, {
+      editedFiles: files.map(f => f.path),
+      tokenCount: tokenCount,
+      model: options.model || 'claude-sonnet-4-20250514'
+    });
     
     // Validate that all imported components have corresponding files
     const validationResult = validateGeneratedFiles(files);
     let finalFiles = validationResult.files;
 
-    // Auto-retry if components are missing
+    // PHASE 4: Enhanced auto-retry with sophisticated component generation
     if (validationResult.missingComponents && validationResult.missingComponents.length > 0) {
-      logger.info('Auto-generating missing components', { 
+      logger.info('Auto-generating missing components with enhanced system', { 
         missingComponents: validationResult.missingComponents 
       });
 
-      // Generate missing components
-      const missingComponentsContent = await generateMissingComponents(
-        validationResult.missingComponents, 
+      // Use enhanced auto-complete service
+      const autoCompleteResult = await autoCompleteService.generateMissingComponents(
+        validationResult.missingComponents,
         files,
-        options,
-        systemPrompt,
-        prompt
+        {
+          model: options.model || 'claude-sonnet-4-20250514',
+          temperature: options.temperature || 0.7,
+          maxTokens: 8000
+        }
       );
 
-      if (missingComponentsContent && missingComponentsContent.length > 0) {
-        finalFiles = [...finalFiles, ...missingComponentsContent];
-        logger.info('Successfully generated missing components', { 
-          generatedCount: missingComponentsContent.length 
+      if (autoCompleteResult.success && autoCompleteResult.generatedFiles.length > 0) {
+        finalFiles = [...finalFiles, ...autoCompleteResult.generatedFiles];
+        logger.info('Enhanced auto-complete succeeded', { 
+          generatedCount: autoCompleteResult.generatedFiles.length,
+          failedCount: autoCompleteResult.failedComponents.length
         });
+
+        // Log warnings from auto-complete
+        if (autoCompleteResult.warnings.length > 0) {
+          logger.warn('Auto-complete warnings', {
+            warnings: autoCompleteResult.warnings
+          });
+        }
+      } else {
+        logger.warn('Enhanced auto-complete failed', {
+          failedComponents: autoCompleteResult.failedComponents,
+          warnings: autoCompleteResult.warnings
+        });
+        
+        // Fallback to original method if enhanced fails
+        const fallbackComponents = await generateMissingComponents(
+          validationResult.missingComponents, 
+          files,
+          options,
+          systemPrompt,
+          prompt
+        );
+
+        if (fallbackComponents && fallbackComponents.length > 0) {
+          finalFiles = [...finalFiles, ...fallbackComponents];
+          logger.info('Fallback component generation succeeded', { 
+            generatedCount: fallbackComponents.length 
+          });
+        }
       }
     }
 
@@ -619,41 +974,72 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
 
     // Chat session management is handled by Supabase directly in the frontend
 
-    // Save files to Supabase
+    // CONTAINER-FIRST APPROACH: Write directly to container filesystem
     if (finalFiles.length > 0) {
-      logger.info(`Saving ${finalFiles.length} files to database`, { 
+      logger.info(`Writing ${finalFiles.length} files directly to container`, { 
         projectId, 
         mode: hasExistingFiles ? 'incremental' : 'full',
         files: finalFiles.map(f => f.path)
       });
 
-      const { error } = await supabase
-        .from('project_files')
-        .upsert(
-          finalFiles.map(file => ({
-            project_id: projectId,
-            path: file.path,
-            content: file.content,
-            type: file.type,
-            size: file.content.length
-          })),
-          { onConflict: 'project_id,path' }
-        );
+      // Get or create preview container first
+      const previewInfo = await localPreviewService.createPreview(projectId, userId);
       
-      if (error) {
-        logger.error('Failed to save files to database', { projectId, error });
+      // Write files directly to container filesystem (like Open-Lovable)
+      // This eliminates sync complexity - preview sees changes instantly
+      for (const file of finalFiles) {
+        try {
+          await localPreviewService.writeFileToContainer(projectId, file.path, file.content);
+          logger.info(`Wrote file directly to container: ${file.path}`);
+        } catch (error) {
+          logger.error(`Failed to write file to container: ${file.path}`, { error });
+        }
       }
-    }
 
-    // Pre-build project for faster preview (run in background)
-    setImmediate(async () => {
-      try {
-        await (localPreviewService as any).prepareProject(projectId, files);
-        logger.info('Project prepared for preview', { projectId });
-      } catch (error) {
-        logger.warn('Failed to prepare project for preview', { projectId, error });
-      }
-    });
+      // Background persistence to database (async, no sync needed)
+      // Using the new background persistence service
+      backgroundPersistenceService.queueSave(projectId, finalFiles);
+
+      // PHASE 3: Track successful edit operation
+      const editType = editIntent?.type || 'FULL_REBUILD';
+      const confidence = editIntent?.confidence || 0.8;
+      await conversationManager.trackEdit(
+        projectId,
+        userId,
+        prompt,
+        editType,
+        finalFiles.map(f => f.path),
+        confidence,
+        'success',
+        undefined,
+        tokenCount,
+        Date.now() - Date.now() // execution time placeholder
+      );
+
+      // Track user behavior patterns
+      await conversationIntelligence.trackUserPreferences(
+        userId,
+        editType,
+        'success',
+        confidence,
+        tokenCount,
+        finalFiles.map(f => f.path),
+        prompt
+      );
+
+      // Track major project change
+      await conversationManager.trackMajorChange(
+        projectId,
+        userId,
+        `Generated ${finalFiles.length} files`,
+        finalFiles.map(f => f.path),
+        hasExistingFiles ? 
+          (editType === 'UPDATE_STYLE' ? 'style_update' : 
+           editType === 'ADD_FEATURE' ? 'feature_add' : 
+           editType === 'FIX_ISSUE' ? 'bug_fix' : 'refactor') : 
+          'full_rebuild'
+      );
+    }
 
     // Deduct credits
     await deductCredits(userId);
@@ -671,17 +1057,78 @@ router.post('/', generateRateLimiter, validateRequest(generateSchema), async (re
 
     await redis.setex(cacheKey, 3600, JSON.stringify(result)); // Cache for 1 hour
 
+    // PHASE 5: Complete package detection session
+    const packageSessionSummary = await packageDetectionService.completeDetectionSession(
+      packageDetectionSession.sessionId
+    );
+
+    logger.info('Package detection session completed', {
+      projectId,
+      sessionId: packageDetectionSession.sessionId,
+      packagesDetected: packageSessionSummary.packagesDetected,
+      packagesInstalled: packageSessionSummary.packagesInstalled,
+      packagesFailed: packageSessionSummary.packagesFailed
+    });
+
+    // Include package information in final result
+    const enhancedResult = {
+      ...result,
+      packageDetection: {
+        packagesDetected: packageSessionSummary.packagesDetected,
+        packagesInstalled: packageSessionSummary.packagesInstalled,
+        packagesFailed: packageSessionSummary.packagesFailed,
+        detectionDuration: packageSessionSummary.duration
+      }
+    };
+
     // Send final event
     res.write(`data: ${JSON.stringify({
       event: 'end',
-      data: result,
+      data: enhancedResult,
     })}\n\n`);
 
     res.end();
 
-    logger.info(`Code generation completed for project ${projectId}`);
+    logger.info(`Code generation completed for project ${projectId}`, {
+      packagesDetected: packageSessionSummary.packagesDetected,
+      packagesInstalled: packageSessionSummary.packagesInstalled
+    });
   } catch (error) {
     // Error occurred - Supabase handles transaction rollback automatically
+    
+    // PHASE 3: Track failed edit operation
+    try {
+      const { projectId: reqProjectId, prompt: reqPrompt } = req.body || {};
+      const reqUserId = req.user?.sub;
+      
+      if (reqProjectId && reqUserId && reqPrompt) {
+        const editType = 'UNKNOWN';
+        await conversationManager.trackEdit(
+          reqProjectId,
+          reqUserId,
+          reqPrompt,
+          editType,
+          [],
+          0,
+          'failed',
+          error instanceof Error ? error.message : 'Generation failed'
+        );
+
+        // Track user behavior patterns for failed attempts
+        await conversationIntelligence.trackUserPreferences(
+          reqUserId,
+          editType,
+          'failed',
+          0,
+          0,
+          [],
+          reqPrompt
+        );
+      }
+    } catch (trackingError) {
+      // Don't let tracking errors affect the main error handling
+      logger.warn('Failed to track error in conversation', { trackingError });
+    }
     
     // Send error event for streaming response
     if (!res.headersSent) {
@@ -704,27 +1151,33 @@ router.post('/explain', validateRequest(z.object({
     code: z.string(),
     question: z.string().optional(),
     language: z.string().default('typescript'),
+    model: z.string().optional()
   }),
 })), async (req, res, next) => {
   try {
-    const { code, question, language } = req.body;
+    const { code, question, language, model } = req.body;
+    
+    const selectedModel = model || appConfig.ai.defaultModel;
+    const content = question 
+      ? `You are a helpful coding assistant. Explain this ${language} code clearly and concisely, and answer: ${question}\n\n${code}`
+      : `You are a helpful coding assistant. Explain this ${language} code clearly and concisely:\n\n${code}`;
 
-    const message = await getAnthropic().messages.create({
-      model: 'claude-sonnet-4-20250514',
-      messages: [
-        {
-          role: 'user',
-          content: question 
-            ? `You are a helpful coding assistant. Explain this ${language} code clearly and concisely, and answer: ${question}\n\n${code}`
-            : `You are a helpful coding assistant. Explain this ${language} code clearly and concisely:\n\n${code}`,
-        },
-      ],
+    const response = await aiProviderManager.generateWithFallback([
+      {
+        role: 'user',
+        content: content
+      },
+    ], {
+      model: selectedModel,
       temperature: 0.3,
-      max_tokens: 1000,
+      maxTokens: 1000,
+      stream: false
     });
 
     res.json({
-      explanation: message.content[0].type === 'text' ? message.content[0].text : '',
+      explanation: response.content,
+      provider: response.provider,
+      model: response.model
     });
   } catch (error) {
     next(error);
@@ -884,31 +1337,26 @@ Generate each missing component using this EXACT format:
 // Component code here
 \`\`\``;
 
-    // Use anthropic with null check
-    if (!anthropic) {
-      throw new Error('Anthropic client not initialized');
-    }
-
-    // Use the same streaming approach as incremental updates
-    const stream = await anthropic.messages.create({
-      model: options.model || 'claude-sonnet-4-20250514',
-      max_tokens: 24000,
-      messages: [
-        {
-          role: 'user',
-          content: `${incrementalSystemPrompt}\n\n${missingComponentPrompt}`
-        }
-      ],
+    // Use AI Provider Manager for generating missing components
+    const selectedModel = options.model || appConfig.ai.defaultModel;
+    
+    const response = await aiProviderManager.generateWithFallback([
+      {
+        role: 'system',
+        content: incrementalSystemPrompt
+      },
+      {
+        role: 'user',
+        content: missingComponentPrompt
+      }
+    ], {
+      model: selectedModel,
+      maxTokens: 24000,
       temperature: options.temperature || 0.7,
-      stream: true,
+      stream: false  // Use non-streaming for simplicity in helper function
     });
 
-    let generatedContent = '';
-    for await (const chunk of stream) {
-      if (chunk.type === 'content_block_delta' && chunk.delta.type === 'text_delta') {
-        generatedContent += chunk.delta.text;
-      }
-    }
+    const generatedContent = response.content;
 
     // Parse the generated components
     const generatedFiles = extractFilesFromContent(generatedContent);
@@ -937,5 +1385,128 @@ Generate each missing component using this EXACT format:
     return null;
   }
 }
+
+// PHASE 6: Multi-AI Provider API Endpoints
+
+// Get available AI models and providers
+router.get('/models', async (req, res, next) => {
+  try {
+    const availableModels = aiProviderManager.getAvailableModels();
+    const availableProviders = aiProviderManager.getAvailableProviders();
+    const providerStats = aiProviderManager.getProviderStats();
+
+    // Get model display names
+    const modelsWithDisplayNames = availableModels.map(modelId => ({
+      id: modelId,
+      displayName: aiProviderManager.getModelDisplayName(modelId),
+      provider: modelId.split('/')[0]
+    }));
+
+    res.json({
+      success: true,
+      models: modelsWithDisplayNames,
+      providers: availableProviders,
+      defaultModel: appConfig.ai.defaultModel,
+      providerStats
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Health check for AI providers
+router.get('/providers/health', async (req, res, next) => {
+  try {
+    const health = await aiProviderManager.healthCheck();
+    
+    res.json({
+      success: true,
+      health
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// PHASE 5: XML Package Management API Endpoints
+
+// Get package installation status for a project
+router.get('/:projectId/packages/status', async (req, res, next) => {
+  try {
+    const { projectId } = req.params;
+    const userId = req.user?.sub;
+
+    if (!userId) {
+      throw new AppError('User not authenticated', 401);
+    }
+
+    // Get current package status
+    const currentPackages = await packageDetectionService.getCurrentProjectPackages(projectId);
+    const activeInstallations = streamingPackageInstaller.getActiveInstallations(projectId);
+    const detectionHistory = packageDetectionService.getProjectDetectionHistory(projectId, 50);
+
+    res.json({
+      success: true,
+      packages: currentPackages,
+      activeInstallations: activeInstallations.map(installation => ({
+        packageName: installation.packageName,
+        stage: installation.stage,
+        progress: installation.progress,
+        message: installation.message,
+        startTime: installation.startTime,
+        logs: installation.logs.slice(-5) // Last 5 log lines
+      })),
+      recentHistory: detectionHistory
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Cancel package installation
+router.post('/:projectId/packages/:packageName/cancel', async (req, res, next) => {
+  try {
+    const { projectId, packageName } = req.params;
+    const userId = req.user?.sub;
+
+    if (!userId) {
+      throw new AppError('User not authenticated', 401);
+    }
+
+    const cancelled = await streamingPackageInstaller.cancelInstallation(projectId, packageName);
+
+    res.json({
+      success: cancelled,
+      message: cancelled 
+        ? `Installation of ${packageName} has been cancelled`
+        : `Could not cancel installation of ${packageName} (may already be complete)`
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
+
+// Get package detection statistics
+router.get('/packages/stats', async (req, res, next) => {
+  try {
+    const packageDetectionStats = packageDetectionService.getServiceStats();
+    const installationStats = streamingPackageInstaller.getInstallationStats();
+    const xmlDetectionStats = xmlPackageManager.getDetectionStats();
+
+    res.json({
+      success: true,
+      stats: {
+        detection: packageDetectionStats,
+        installation: installationStats,
+        xmlDetection: xmlDetectionStats
+      }
+    });
+
+  } catch (error) {
+    next(error);
+  }
+});
 
 export default router;

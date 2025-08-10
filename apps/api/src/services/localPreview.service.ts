@@ -2,7 +2,7 @@
 import fs from 'fs/promises';
 import path from 'path';
 import { logger } from '../utils/logger.js';
-import { supabase } from '../config/supabase.js';
+// REMOVED: supabase import - not needed in container-first approach
 import { getWebSocketService } from './websocket.service.js';
 
 interface ProjectFile {
@@ -125,31 +125,29 @@ class LocalPreviewService {
         }
       }
 
-      logger.info('Creating new local preview', { projectId, userId });
+      logger.info('Creating new local preview (container-first)', { projectId, userId });
 
-      // Get project files from database
-      if (!supabase) {
-        throw new Error('Supabase client not initialized');
-      }
+      // CONTAINER-FIRST: Check if container already has files
+      let files: ProjectFile[] = [];
+      const existingFileTree = await this.getFileTree(projectId);
       
-      const { data: files, error: filesError } = await supabase
-        .from('project_files')
-        .select('path, content, type')
-        .eq('project_id', projectId);
-
-      if (filesError) {
-        throw new Error(`Failed to fetch project files: ${filesError.message}`);
+      if (Object.keys(existingFileTree).length > 0) {
+        // Container already has files - use them directly
+        files = Object.entries(existingFileTree).map(([path, content]) => ({
+          path,
+          content,
+          type: this.getFileType(path)
+        }));
+        logger.info('Container already has files, using existing', { 
+          projectId, 
+          fileCount: files.length 
+        });
+      } else {
+        // Container is empty - this should only happen for initial project creation
+        // In a true container-first approach, we create a minimal project structure
+        logger.info('Empty container, will create minimal structure', { projectId });
+        files = []; // Will be populated by setupProjectFiles with defaults
       }
-
-      if (!files || files.length === 0) {
-        throw new Error('No files found in project');
-      }
-
-      logger.info('Fetched files from database', { 
-        projectId, 
-        fileCount: files.length,
-        filePaths: files.map(f => f.path)
-      });
 
       // Find available port
       const port = await this.findAvailablePort();
@@ -315,7 +313,92 @@ class LocalPreviewService {
   }
 
   /**
-   * Update project files incrementally (preserving node_modules and build state)
+   * CONTAINER-FIRST: Write file directly to container filesystem (like Open-Lovable)
+   * This eliminates sync complexity - preview sees changes instantly
+   */
+  async writeFileToContainer(projectId: string, filePath: string, content: string): Promise<void> {
+    const projectPath = path.join(this.tempDir, projectId);
+    const fullPath = path.join(projectPath, filePath);
+    const dir = path.dirname(fullPath);
+    
+    // Ensure directory exists
+    await fs.mkdir(dir, { recursive: true });
+    
+    // Write file directly to container filesystem
+    await fs.writeFile(fullPath, content, 'utf-8');
+    
+    logger.info('File written directly to container', { projectId, filePath, fullPath });
+    
+    // No sync needed - Vite HMR will detect the file change automatically
+    // This is the key advantage of container-first architecture
+  }
+
+  /**
+   * CONTAINER-FIRST: Check if project has existing files directly from container
+   */
+  async hasExistingFiles(projectId: string): Promise<boolean> {
+    try {
+      const projectPath = path.join(this.tempDir, projectId);
+      const srcPath = path.join(projectPath, 'src');
+      
+      // Check if src directory exists and has files
+      const srcExists = await fs.access(srcPath).then(() => true).catch(() => false);
+      if (!srcExists) return false;
+      
+      const files = await fs.readdir(srcPath, { recursive: true });
+      return files.length > 0;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * CONTAINER-FIRST: Get file tree directly from container filesystem
+   */
+  async getFileTree(projectId: string): Promise<Record<string, string>> {
+    const projectPath = path.join(this.tempDir, projectId);
+    const fileTree: Record<string, string> = {};
+    
+    try {
+      await this.readDirectoryRecursively(projectPath, fileTree, projectPath);
+      return fileTree;
+    } catch (error) {
+      logger.warn('Failed to read file tree from container', { projectId, error });
+      return {};
+    }
+  }
+
+  /**
+   * Helper to read directory recursively for file tree
+   */
+  private async readDirectoryRecursively(dirPath: string, fileTree: Record<string, string>, basePath: string): Promise<void> {
+    const items = await fs.readdir(dirPath, { withFileTypes: true });
+    
+    for (const item of items) {
+      const fullPath = path.join(dirPath, item.name);
+      const relativePath = path.relative(basePath, fullPath);
+      
+      // Skip node_modules and other build artifacts
+      if (item.name === 'node_modules' || item.name === '.git' || item.name === 'dist' || item.name === 'build') {
+        continue;
+      }
+      
+      if (item.isDirectory()) {
+        await this.readDirectoryRecursively(fullPath, fileTree, basePath);
+      } else if (item.isFile()) {
+        try {
+          const content = await fs.readFile(fullPath, 'utf-8');
+          fileTree[relativePath] = content;
+        } catch (error) {
+          logger.warn('Failed to read file for tree', { file: relativePath, error });
+        }
+      }
+    }
+  }
+
+  /**
+   * CONTAINER-FIRST: Update preview (files are already written directly to container)
+   * No sync needed - Vite HMR detects changes automatically
    */
   async updatePreview(projectId: string): Promise<LocalPreviewInfo> {
     const existing = this.activeServers.get(projectId);
@@ -323,424 +406,30 @@ class LocalPreviewService {
       throw new Error('Preview not found');
     }
 
-    // Get updated files from database
-    if (!supabase) {
-      throw new Error('Supabase client not initialized');
-    }
+    // In container-first approach, files are already written directly to container
+    // Vite HMR will detect the file changes automatically
+    // No complex sync operations needed!
     
-    const { data: files, error: filesError } = await supabase
-      .from('project_files')
-      .select('path, content, type')
-      .eq('project_id', projectId);
-
-    if (filesError || !files) {
-      throw new Error('Failed to fetch updated files');
-    }
-
-    // Update only the AI-modified files (preserves node_modules and build state)
-    const projectPath = path.join(this.tempDir, projectId);
-    await this.updateChangedFiles(projectPath, files, existing.port);
-
-    // Vite will automatically hot reload the changes
-    logger.info('Project files updated incrementally, Vite will hot reload', { projectId });
-
+    logger.info('Container-first: Preview automatically updated via HMR', { projectId });
     return existing;
   }
 
-  /**
-   * Update only the changed files and analyze dependencies for additional updates needed
-   */
-  private async updateChangedFiles(projectPath: string, files: ProjectFile[], port?: number): Promise<void> {
-    logger.info('Starting incremental file update', { 
-      projectPath, 
-      changedFiles: files.length,
-      filesList: files.map(f => f.path)
-    });
 
-    // Broadcast building status
-    await this.broadcastPreviewStatus(projectPath, 'building', 'Updating preview with generated code...');
+  // REMOVED: analyzeAndUpdateDependencies - not needed in container-first approach
+  // AI handles all dependency management in the generate routes
 
-    // Parse files from AI-generated content
-    const parsedFiles = this.parseGeneratedFiles(files);
-    
-    // Step 1: Update only the AI-modified files
-    const updatedFilePaths = new Set<string>();
-    for (const file of parsedFiles) {
-      const fullPath = path.join(projectPath, file.path);
-      const dir = path.dirname(fullPath);
-      
-      // Ensure directory exists
-      await fs.mkdir(dir, { recursive: true });
-      
-      // Write the updated file
-      await fs.writeFile(fullPath, file.content, 'utf-8');
-      updatedFilePaths.add(file.path);
-      
-      logger.info('Updated AI-modified file', { filePath: file.path });
-    }
+  // REMOVED: updateAppImports - AI handles all import management directly
 
-    // Step 2: Analyze dependencies and update related files if needed
-    await this.analyzeAndUpdateDependencies(projectPath, parsedFiles, updatedFilePaths, port);
-    
-    // Step 3: Sync all updated files back to Supabase
-    await this.syncFilesToSupabase(projectPath, updatedFilePaths);
-    
-    // Step 4: Broadcast file updates via WebSocket  
-    await this.broadcastFileUpdates(projectPath, parsedFiles);
-    
-    // Step 5: Broadcast preview ready status
-    await this.broadcastPreviewStatus(projectPath, 'ready');
-    
-    logger.info('Incremental file update completed', { 
-      projectPath, 
-      aiModifiedFiles: parsedFiles.length,
-      totalUpdatedFiles: updatedFilePaths.size
-    });
-  }
+  // REMOVED: All complex sync methods - not needed in container-first approach
+  // - hasCustomTailwindClasses
+  // - ensureTailwindConfig  
+  // - updateViteConfigPort
+  // - ensureRequiredDependencies
+  // - syncFilesToSupabase
+  // AI handles all configuration and dependency management directly
 
-  /**
-   * Analyze AI changes and update dependent files (App.tsx imports, Tailwind config, etc.)
-   */
-  private async analyzeAndUpdateDependencies(
-    projectPath: string, 
-    aiModifiedFiles: ProjectFile[], 
-    updatedPaths: Set<string>,
-    port?: number
-  ): Promise<void> {
-    
-    // Check if new components were added that need to be imported in App.tsx
-    const newComponents = aiModifiedFiles.filter(f => 
-      f.path.startsWith('src/components/') && 
-      (f.path.endsWith('.tsx') || f.path.endsWith('.jsx'))
-    );
-
-    if (newComponents.length > 0) {
-      await this.updateAppImports(projectPath, newComponents, updatedPaths);
-    }
-
-    // Check if Tailwind classes are used that might need config updates
-    const hasNewTailwindClasses = aiModifiedFiles.some(f => 
-      f.content.includes('className=') && 
-      this.hasCustomTailwindClasses(f.content)
-    );
-
-    if (hasNewTailwindClasses) {
-      await this.ensureTailwindConfig(projectPath, updatedPaths);
-    }
-
-    // Update Vite config port if needed
-    if (port) {
-      await this.updateViteConfigPort(projectPath, port, updatedPaths);
-    }
-
-    // Ensure package.json has all required dependencies
-    await this.ensureRequiredDependencies(projectPath, aiModifiedFiles, updatedPaths);
-  }
-
-  /**
-   * Update App.tsx to import new components if needed
-   */
-  private async updateAppImports(
-    projectPath: string, 
-    newComponents: ProjectFile[], 
-    updatedPaths: Set<string>
-  ): Promise<void> {
-    const appPath = path.join(projectPath, 'src', 'App.tsx');
-    
-    try {
-      const currentAppContent = await fs.readFile(appPath, 'utf-8');
-      let needsUpdate = false;
-      let updatedContent = currentAppContent;
-
-      for (const component of newComponents) {
-        const componentName = path.basename(component.path, path.extname(component.path));
-        const importPath = `./${component.path.replace('src/', '').replace(/\.(tsx?|jsx?)$/, '')}`;
-        
-        // Check if import already exists
-        const importRegex = new RegExp(`import\\s+${componentName}\\s+from\\s+['"]${importPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`);
-        
-        if (!importRegex.test(updatedContent)) {
-          // Add import
-          const importStatement = `import ${componentName} from '${importPath}';`;
-          
-          // Find where to insert the import (after existing imports)
-          const importLines = updatedContent.split('\n');
-          let lastImportIndex = -1;
-          
-          for (let i = 0; i < importLines.length; i++) {
-            if (importLines[i].trim().startsWith('import ')) {
-              lastImportIndex = i;
-            }
-          }
-          
-          if (lastImportIndex >= 0) {
-            importLines.splice(lastImportIndex + 1, 0, importStatement);
-            updatedContent = importLines.join('\n');
-            needsUpdate = true;
-            
-            logger.info('Added import to App.tsx', { componentName, importPath });
-          }
-        }
-      }
-
-      if (needsUpdate) {
-        await fs.writeFile(appPath, updatedContent, 'utf-8');
-        updatedPaths.add('src/App.tsx');
-        logger.info('Updated App.tsx with new component imports');
-      }
-      
-    } catch (error) {
-      logger.warn('Could not update App.tsx imports', { error });
-    }
-  }
-
-  /**
-   * Check if content has custom Tailwind classes that might need config
-   */
-  private hasCustomTailwindClasses(content: string): boolean {
-    // Look for custom colors, spacing, or complex Tailwind patterns
-    const customClassPatterns = [
-      /className="[^"]*bg-\[#[0-9a-fA-F]+\]/,  // Custom hex colors
-      /className="[^"]*text-\[[^\]]+\]/,        // Custom text sizes/colors
-      /className="[^"]*w-\[[^\]]+\]/,           // Custom widths
-      /className="[^"]*h-\[[^\]]+\]/,           // Custom heights
-    ];
-    
-    return customClassPatterns.some(pattern => pattern.test(content));
-  }
-
-  /**
-   * Ensure Tailwind config exists and is properly set up
-   */
-  private async ensureTailwindConfig(projectPath: string, updatedPaths: Set<string>): Promise<void> {
-    const tailwindConfigPath = path.join(projectPath, 'tailwind.config.js');
-    
-    try {
-      await fs.access(tailwindConfigPath);
-      // Tailwind config exists, no need to update
-    } catch {
-      // Create default Tailwind config
-      const tailwindConfig = `/** @type {import('tailwindcss').Config} */
-export default {
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
-  theme: {
-    extend: {},
-  },
-  plugins: [],
-}`;
-      
-      await fs.writeFile(tailwindConfigPath, tailwindConfig, 'utf-8');
-      updatedPaths.add('tailwind.config.js');
-      logger.info('Created missing Tailwind config');
-    }
-  }
-
-  /**
-   * Update Vite config port if needed
-   */
-  private async updateViteConfigPort(projectPath: string, port: number, updatedPaths: Set<string>): Promise<void> {
-    const viteConfigPath = path.join(projectPath, 'vite.config.ts');
-    
-    try {
-      const currentContent = await fs.readFile(viteConfigPath, 'utf-8');
-      const updatedContent = currentContent.replace(/port:\s*\d+/, `port: ${port}`);
-      
-      if (updatedContent !== currentContent) {
-        await fs.writeFile(viteConfigPath, updatedContent, 'utf-8');
-        updatedPaths.add('vite.config.ts');
-        logger.info('Updated Vite config port', { port });
-      }
-    } catch (error) {
-      logger.warn('Could not update Vite config port', { error });
-    }
-  }
-
-  /**
-   * Ensure package.json has required dependencies for AI-generated code
-   */
-  private async ensureRequiredDependencies(
-    _projectPath: string, 
-    aiModifiedFiles: ProjectFile[], 
-    _updatedPaths: Set<string>
-  ): Promise<void> {
-    // Check if AI code uses any new libraries
-    const usedLibraries = new Set<string>();
-    
-    for (const file of aiModifiedFiles) {
-      // Extract import statements to find used libraries
-      const importMatches = file.content.match(/import\s+.*?\s+from\s+['"]([^'"]+)['"]/g);
-      if (importMatches) {
-        importMatches.forEach(importMatch => {
-          const libMatch = importMatch.match(/from\s+['"]([^'"]+)['"]/);
-          if (libMatch && !libMatch[1].startsWith('.')) {
-            // External library (not relative import)
-            usedLibraries.add(libMatch[1]);
-          }
-        });
-      }
-    }
-
-    if (usedLibraries.size > 0) {
-      logger.info('Detected external libraries in AI code', { 
-        libraries: Array.from(usedLibraries) 
-      });
-      // For now, just log - could implement automatic dependency installation
-    }
-  }
-
-  /**
-   * Sync locally updated files back to Supabase database
-   */
-  private async syncFilesToSupabase(projectPath: string, updatedFilePaths: Set<string>): Promise<void> {
-    if (updatedFilePaths.size === 0) {
-      return;
-    }
-
-    // Extract project ID from project path
-    const projectId = path.basename(projectPath);
-    
-    logger.info('Syncing updated files to Supabase', { 
-      projectId, 
-      fileCount: updatedFilePaths.size,
-      files: Array.from(updatedFilePaths)
-    });
-
-    try {
-      // Read all updated files from disk and prepare for database update
-      const filesToSync: ProjectFile[] = [];
-      
-      for (const filePath of updatedFilePaths) {
-        try {
-          const fullPath = path.join(projectPath, filePath);
-          const content = await fs.readFile(fullPath, 'utf-8');
-          const fileExtension = path.extname(filePath);
-          
-          // Determine file type
-          let fileType = 'text';
-          if (['.tsx', '.ts'].includes(fileExtension)) {
-            fileType = 'typescript';
-          } else if (['.jsx', '.js'].includes(fileExtension)) {
-            fileType = 'javascript';
-          } else if (fileExtension === '.css') {
-            fileType = 'css';
-          } else if (fileExtension === '.json') {
-            fileType = 'json';
-          } else if (fileExtension === '.html') {
-            fileType = 'html';
-          }
-
-          filesToSync.push({
-            path: filePath,
-            content,
-            type: fileType
-          });
-        } catch (error) {
-          logger.warn('Failed to read file for sync', { filePath, error });
-        }
-      }
-
-      // Update files in Supabase database
-      if (filesToSync.length > 0 && supabase) {
-        for (const file of filesToSync) {
-          const { error } = await supabase
-            .from('project_files')
-            .upsert({
-              project_id: projectId,
-              path: file.path,
-              content: file.content,
-              type: file.type,
-              updated_at: new Date().toISOString()
-            }, {
-              onConflict: 'project_id,path'
-            });
-
-          if (error) {
-            logger.error('Failed to sync file to Supabase', { 
-              projectId, 
-              filePath: file.path, 
-              error 
-            });
-          } else {
-            logger.debug('Synced file to Supabase', { 
-              projectId, 
-              filePath: file.path 
-            });
-          }
-        }
-
-        logger.info('Successfully synced files to Supabase', { 
-          projectId, 
-          syncedFiles: filesToSync.length 
-        });
-      }
-    } catch (error) {
-      logger.error('Failed to sync files to Supabase', { projectId, error });
-    }
-  }
-
-  /**
-   * Broadcast file updates to connected clients via WebSocket
-   */
-  private async broadcastFileUpdates(projectPath: string, updatedFiles: ProjectFile[]): Promise<void> {
-    if (updatedFiles.length === 0) {
-      return;
-    }
-
-    const projectId = path.basename(projectPath);
-    
-    try {
-      const webSocketService = getWebSocketService();
-      
-      // Broadcast file update event with proper format
-      webSocketService.broadcastToProject(projectId, 'files-updated', {
-        projectId,
-        files: updatedFiles,
-        userId: 'system' // Since this is from AI generation
-      });
-      
-      logger.info('Broadcasted file updates via WebSocket', { 
-        projectId, 
-        fileCount: updatedFiles.length 
-      });
-      
-    } catch (error) {
-      logger.debug('WebSocket service not available for file update broadcast', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-    }
-  }
-
-  /**
-   * Broadcast preview status update via WebSocket
-   */
-  private async broadcastPreviewStatus(projectPath: string, status: 'building' | 'ready' | 'error', message?: string): Promise<void> {
-    const projectId = path.basename(projectPath);
-    
-    try {
-      const webSocketService = getWebSocketService();
-      
-      // Broadcast preview status event
-      webSocketService.broadcastToProject(projectId, 'preview-rebuild', {
-        projectId,
-        status,
-        message: message || (status === 'ready' ? 'Preview updated successfully' : 'Preview is building...'),
-        progress: status === 'ready' ? 100 : (status === 'building' ? 50 : 0)
-      });
-      
-      logger.info('Broadcasted preview status via WebSocket', { 
-        projectId, 
-        status,
-        message 
-      });
-    } catch (error) {
-      logger.debug('WebSocket service not available for preview status broadcast', { 
-        error: error instanceof Error ? error.message : String(error) 
-      });
-    }
-  }
+  // REMOVED: broadcastFileUpdates and broadcastPreviewStatus - not used in container-first
+  // WebSocket communication handled directly by webSocketService where needed
 
   /**
    * Check if node_modules directory exists for project
