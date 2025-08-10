@@ -199,6 +199,20 @@ Application Requirements:
 12. POSTCSS CRITICAL: Always include postcss.config.js or Tailwind processing will fail
 13. VITE CRITICAL: Always include vite.config.ts with server settings and SWC plugin or preview will fail
 
+IMPORT VALIDATION (CRITICAL - PREVENTS BUILD FAILURES):
+14. EVERY import statement must reference an interface/type that actually exists
+15. If ANY component imports from './types' or '../types', ensure ALL imported interfaces are defined in types.ts
+16. Generate complete type definitions - never leave interfaces missing or incomplete
+17. DOUBLE-CHECK: Scan all component files for type imports and ensure every imported interface exists
+18. Example: Component imports User, Question, Challenge → types.ts must export ALL three interfaces
+19. VALIDATION STEP: Before finalizing, verify that every import can be resolved
+
+FILE CREATION RESTRICTIONS (CRITICAL):
+20. NEVER create files named after commands (e.g., "npm install", "npm run dev", "npm run build")
+21. Commands like "npm install" are meant to be RUN, not created as files
+22. DO NOT create any files with spaces in their names
+23. DO NOT create command instruction files - only create actual source code and config files
+
 File Structure (ALWAYS create these files):
 - package.json (with all dependencies)
 - vite.config.ts

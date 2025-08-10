@@ -40,12 +40,10 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
-        japan: {
-          red: "#E60012",
-          cherry: "#FFB7C5",
+        saudi: {
+          green: "#006C35",
           gold: "#FFD700",
-          indigo: "#4B0082",
-          bamboo: "#8FBC8F"
+          sand: "#F4E4BC",
         }
       },
       borderRadius: {
@@ -54,28 +52,8 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       animation: {
-        'fade-in': 'fadeIn 0.5s ease-in-out',
-        'slide-up': 'slideUp 0.6s ease-out',
-        'float': 'float 3s ease-in-out infinite',
-        'cherry-fall': 'cherryFall 4s ease-in-out infinite',
-      },
-      keyframes: {
-        fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
-        },
-        slideUp: {
-          '0%': { transform: 'translateY(20px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
-        },
-        float: {
-          '0%, 100%': { transform: 'translateY(0px)' },
-          '50%': { transform: 'translateY(-10px)' },
-        },
-        cherryFall: {
-          '0%': { transform: 'translateY(-10px) rotate(0deg)', opacity: '1' },
-          '100%': { transform: 'translateY(100vh) rotate(360deg)', opacity: '0' },
-        }
+        'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'bounce-slow': 'bounce 2s infinite',
       }
     },
   },
