@@ -10,36 +10,48 @@
       "projectId": "bef95762-c2e2-4518-9174-caee196660ab",
       "port": 4001,
       "url": "http://localhost:4001",
-      "status": "ready"
-    },
-    "8bc37012-f78c-47dd-8ff7-e8a7f95371da": {
-      "projectId": "8bc37012-f78c-47dd-8ff7-e8a7f95371da",
-      "port": 0,
-      "url": "",
       "status": "error"
     },
     "422d8848-55ba-40be-ac63-a733e0058c0f": {
       "projectId": "422d8848-55ba-40be-ac63-a733e0058c0f",
       "port": 4002,
       "url": "http://localhost:4002",
-      "status": "ready"
+      "status": "error"
     },
     "4fd43243-1824-486e-a81e-d39e59d3be18": {
       "projectId": "4fd43243-1824-486e-a81e-d39e59d3be18",
       "port": 4003,
       "url": "http://localhost:4003",
-      "status": "ready"
+      "status": "error"
     },
     "54f4cfcc-f143-4764-89d3-24011cdf494d": {
       "projectId": "54f4cfcc-f143-4764-89d3-24011cdf494d",
       "port": 4004,
       "url": "http://localhost:4004",
-      "status": "ready"
+      "status": "error"
     },
     "73a7baa2-0ea1-46f6-a8bb-c1999981fd94": {
       "projectId": "73a7baa2-0ea1-46f6-a8bb-c1999981fd94",
       "port": 4005,
       "url": "http://localhost:4005",
+      "status": "error"
+    },
+    "314ded5a-c356-488e-887d-c9f73c8ab5a0": {
+      "projectId": "314ded5a-c356-488e-887d-c9f73c8ab5a0",
+      "port": 4006,
+      "url": "http://localhost:4006",
+      "status": "ready"
+    },
+    "8e574a96-89a2-4b83-8acf-fa9db1d4c0ac": {
+      "projectId": "8e574a96-89a2-4b83-8acf-fa9db1d4c0ac",
+      "port": 4007,
+      "url": "http://localhost:4007",
+      "status": "ready"
+    },
+    "b8b18b57-815c-47db-92ba-5e2f14bf2644": {
+      "projectId": "b8b18b57-815c-47db-92ba-5e2f14bf2644",
+      "port": 4008,
+      "url": "http://localhost:4008",
       "status": "starting"
     }
   }

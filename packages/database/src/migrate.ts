@@ -36,9 +36,9 @@ async function migrate() {
     for (const file of migrationFiles) {
       if (!executedMigrations.has(file)) {
         console.log(`Executing migration: ${file}`);
-        
+
         const sql = await readFile(join(migrationsDir, file), 'utf-8');
-        
+
         await client.query('BEGIN');
         try {
           await client.query(sql);
